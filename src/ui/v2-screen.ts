@@ -43,7 +43,7 @@ export function renderV2(host: HTMLElement, goBack: () => void): void {
     el("h2", { innerHTML: '🧪 v2 — Netcode justo <span class="badge">experimental</span>' }),
     button("← Volver", "ghost", goBack),
   ));
-  panel.append(el("p", { class: "sub", textContent: "Demo del netcode competitivo: ambos corren la MISMA simulación desde la misma semilla e intercambian solo inputs (lockstep determinista). Sin ventaja para nadie. Es el motor que después manejará N64. Juego de prueba: Pong. Movete con ↑ ↓ (o W/S)." }));
+  panel.append(el("p", { class: "sub", textContent: "Esto es una DEMO TÉCNICA del netcode competitivo, con un Pong como juego de prueba — acá no se juega N64 (para eso: Jugar Online). Ambos peers corren la MISMA simulación desde la misma semilla e intercambian solo inputs: cero ventaja para nadie. Cuando exista el core N64 determinista, se enchufa a este mismo motor. Movete con ↑ ↓ (o W/S)." }));
   const warn = touchWarning();
   if (warn) panel.append(warn);
 

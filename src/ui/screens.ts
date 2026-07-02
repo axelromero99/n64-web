@@ -63,8 +63,8 @@ function landing(go: (s: Screen) => void): HTMLElement {
   const v2 = clickable(el("div", { class: "card", style: "margin-top:18px" },
     el("div", { class: "arrow", textContent: "→" }),
     el("div", { class: "card-icon", textContent: "🧪" }),
-    el("h2", { innerHTML: 'Netcode justo <span class="badge">v2 · rollback</span>' }),
-    el("p", { textContent: "Demo del online competitivo: ambos corren la misma simulación e intercambian solo inputs, con lockstep y rollback deterministas. Cero ventaja, verificado. El motor que después manejará N64." }),
+    el("h2", { innerHTML: 'Demo técnica: netcode competitivo <span class="badge">Pong · todavía no es N64</span>' }),
+    el("p", { textContent: "El motor del futuro online competitivo (lockstep + rollback deterministas, cero ventaja), probado con un Pong. Acá NO se juega N64: para eso usá Jugar Online. El core N64 determinista que se enchufa a este motor es el próximo gran paso." }),
   ), () => go("v2"));
   wrap.append(v2);
   return wrap;
