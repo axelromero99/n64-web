@@ -14,11 +14,12 @@ try {
     return e ? { frame: e.currentFrame, desync: e.isDesync } : null;
   }).catch(() => null);
 
-  // Peer A crea la partida.
+  // Peer A crea la partida (LOCKSTEP explícito: este script prueba lockstep;
+  // el rollback tiene el suyo en verify-rollback.mjs).
   const ctxA = await browser.newContext({ viewport: { width: 760, height: 620 } });
   const A = await ctxA.newPage();
   A.on("pageerror", (e) => console.log("  [A err]", e.message));
-  await A.goto(BASE + "#v2", { waitUntil: "load" });
+  await A.goto(BASE + "?nc=lockstep#v2", { waitUntil: "load" });
   await A.click("text=Crear partida");
   await sleep(600);
   const code = await A.evaluate(() => document.querySelector(".roomcode-box .code")?.textContent || "");
@@ -28,7 +29,7 @@ try {
   const ctxB = await browser.newContext({ viewport: { width: 760, height: 620 } });
   const B = await ctxB.newPage();
   B.on("pageerror", (e) => console.log("  [B err]", e.message));
-  await B.goto(`${BASE}?room=${code}#v2`, { waitUntil: "load" });
+  await B.goto(`${BASE}?room=${code}&nc=lockstep#v2`, { waitUntil: "load" });
 
   // Esperar a que ambos motores arranquen.
   let ready = false;

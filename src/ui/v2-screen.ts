@@ -23,17 +23,25 @@ function inviteLink(room: string): string {
   return u.toString();
 }
 
-// Estado de teclado → input de paleta (-1 arriba, +1 abajo).
-function paddleInput(): () => SimInput {
+// Estado de teclado → input de paleta (-1 arriba, +1 abajo). Devuelve también
+// el detach: sin él, cada visita a la pantalla dejaba listeners globales vivos
+// (y el preventDefault de ↑/↓ rompía el scroll del resto de la app).
+function paddleInput(): { read: () => SimInput; detach: () => void } {
   const keys = new Set<string>();
   const kd = (e: KeyboardEvent) => { keys.add(e.code); if (["ArrowUp", "ArrowDown"].includes(e.code)) e.preventDefault(); };
   const ku = (e: KeyboardEvent) => keys.delete(e.code);
   window.addEventListener("keydown", kd);
   window.addEventListener("keyup", ku);
-  return () => {
-    const up = keys.has("ArrowUp") || keys.has("KeyW");
-    const down = keys.has("ArrowDown") || keys.has("KeyS");
-    return { paddle: up && !down ? -1 : down && !up ? 1 : 0 };
+  return {
+    read: () => {
+      const up = keys.has("ArrowUp") || keys.has("KeyW");
+      const down = keys.has("ArrowDown") || keys.has("KeyS");
+      return { paddle: up && !down ? -1 : down && !up ? 1 : 0 };
+    },
+    detach: () => {
+      window.removeEventListener("keydown", kd);
+      window.removeEventListener("keyup", ku);
+    },
   };
 }
 
@@ -47,6 +55,12 @@ export function renderV2(host: HTMLElement, goBack: () => void): void {
 
   const body = el("div");
   panel.append(body);
+
+  if (typeof RTCPeerConnection === "undefined") {
+    body.append(el("div", { class: "callout warn", innerHTML: "Tu navegador no soporta <b>WebRTC</b>, que es lo que conecta a los dos jugadores. Probá con Chrome, Edge o Firefox actualizados." }));
+    host.append(panel);
+    return;
+  }
 
   const pre = urlRoom();
   if (pre) startGame(body, pre, "join");
@@ -131,13 +145,14 @@ function startGame(body: HTMLElement, room: string, role: "create" | "join"): vo
 
   const callout = el("div", { class: "callout", innerHTML: "Movés con <kbd>↑</kbd> <kbd>↓</kbd> (o <kbd>W</kbd>/<kbd>S</kbd>). Tu paleta es la <b style='color:#34d6ff'>celeste</b>. Ganás con " + 7 + " puntos." });
 
-  const back = el("div", { class: "back-link" }, button("← Salir", "danger", () => { handle?.stop(); renderChoice(body); }));
+  const back = el("div", { class: "back-link" }, button("← Salir", "danger", () => { stopAll(); renderChoice(body); }));
 
   body.append(topRow, canvas, el("div", { style: "height:12px" }), callout, back);
 
-  const read = paddleInput();
+  const input = paddleInput();
+  const stopAll = () => { handle?.stop(); input.detach(); };
   const handle: MatchHandle = startMatch({
-    room, role, netcode: selectedNetcode, canvas, readInput: read,
+    room, role, netcode: selectedNetcode, canvas, readInput: input.read,
     onStatus: (s: MatchStatus) => {
       const label = s.phase === "connected"
         ? (s.desync ? "⚠ DESYNC" : s.stalled ? "esperando al rival…" : "en sync ✓")

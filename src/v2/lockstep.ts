@@ -33,6 +33,8 @@ export interface LockstepStatus {
 const STEP_MS = 1000 / 60;
 const HASH_EVERY = 30;
 const MAX_ADVANCE_PER_TICK = 6;
+// Tolerancia de frames "del futuro" en mensajes remotos (~20 s a 60 fps).
+const MAX_FRAME_AHEAD = 1200;
 
 export class Lockstep {
   private readonly sim: Simulation;
@@ -74,6 +76,9 @@ export class Lockstep {
 
   /** Mensaje recibido del peer. */
   receive(m: NetMsg): void {
+    // Frames absurdamente adelantados: peer roto o abuso → ignorar (no dejar
+    // que inflen los buffers; el prune solo poda hacia atrás).
+    if (m.f > this.simFrame + MAX_FRAME_AHEAD) return;
     if (m.t === "in") {
       this.remote.set(m.f, { paddle: (m.p as number) | 0 });
     } else if (m.t === "hash") {
@@ -112,7 +117,10 @@ export class Lockstep {
         this.acc -= STEP_MS;
         advanced++;
       }
-      if (advanced === 0 && this.acc >= STEP_MS) { stalled = true; this.acc = STEP_MS; }
+      // Al estar frenados esperando al rival, no acumular "deuda" de tiempo
+      // (la partida correría acelerada al destrabarse).
+      if (advanced === 0 && this.acc >= STEP_MS) stalled = true;
+      if (stalled) this.acc = Math.min(this.acc, STEP_MS);
       this.draw();
       const ahead = this.maxRemoteFrame() - this.simFrame;
       this.onStatus?.({ frame: this.simFrame, stalled, desync: this.desync, ahead: Math.max(0, ahead) });

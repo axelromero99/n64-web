@@ -32,6 +32,8 @@ const STEP_MS = 1000 / 60;
 const HASH_EVERY = 30;
 const MAX_PREDICT = 8;
 const MAX_ADVANCE_PER_TICK = 4;
+// Tolerancia de frames "del futuro" en mensajes remotos (~20 s a 60 fps).
+const MAX_FRAME_AHEAD = 1200;
 
 export class Rollback {
   private confirmedSim: Simulation;
@@ -76,6 +78,9 @@ export class Rollback {
   }
 
   receive(m: NetMsg): void {
+    // Frames absurdamente adelantados: o es un peer roto o es abuso. Ignorar
+    // para que no infle los buffers (el prune solo poda hacia atrás).
+    if (m.f > this.currentFrame + MAX_FRAME_AHEAD) return;
     if (m.t === "in") {
       const input: SimInput = { paddle: (m.p as number) | 0 };
       // Telemetría de rollback: si el input real de un frame ya "predicho" difiere
@@ -116,8 +121,9 @@ export class Rollback {
 
       // Avanzar el frame que se MUESTRA (predictivo), acotado por la ventana.
       let advanced = 0;
+      let blocked = false;
       while (this.acc >= STEP_MS && advanced < MAX_ADVANCE_PER_TICK) {
-        if (this.currentFrame - this.confirmedNext >= MAX_PREDICT) break; // esperar a confirmar
+        if (this.currentFrame - this.confirmedNext >= MAX_PREDICT) { blocked = true; break; } // esperar a confirmar
         const l = this.readInput();
         this.local.set(this.currentFrame, l);
         this.send({ t: "in", f: this.currentFrame, p: l.paddle });
@@ -125,6 +131,10 @@ export class Rollback {
         this.acc -= STEP_MS;
         advanced++;
       }
+      // Si la ventana de predicción nos frenó, NO acumular "deuda" de tiempo:
+      // al volver el rival la partida correría acelerada hasta drenar el
+      // atraso (p. ej. tras minimizar la pestaña). Mismo clamp que lockstep.
+      if (blocked) this.acc = Math.min(this.acc, STEP_MS);
 
       this.advanceConfirmed();
 
