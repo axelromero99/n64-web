@@ -1,4 +1,4 @@
-import { startHost, startGuest, type NetStatus, type GuestHandle } from "../net/online";
+import { startHost, startGuest, type NetStatus, type GuestHandle, type HostHandle } from "../net/online";
 import { KEYBOARD_PRESETS } from "../input/n64";
 import { el, button, statusPill, romDropzone, overlay, toast, copyText, makeRoomCode } from "./components";
 import { controlsHelp } from "./controls-help";
@@ -96,14 +96,24 @@ function launchHost(body: HTMLElement, rom: File): void {
   const ov = overlay("Descargando el core de N64 y arrancando el juego… (unos segundos)");
   stage.append(ov.root);
 
+  // Toggle de "Modo justo" (input-delay): empareja el lag para que el host no
+  // tenga ventaja de reacción. Arranca activado.
+  let fairOn = true;
+  const fairBtn = button("⚖️ Modo justo: ON", "ghost", () => {
+    fairOn = !fairOn;
+    handle?.setFair(fairOn);
+    fairBtn.innerHTML = fairOn ? "⚖️ Modo justo: ON" : "⚖️ Modo justo: OFF";
+  });
+
   const toolbar = el("div", { class: "toolbar" },
     pill.root,
     el("div", { class: "spacer" }),
+    fairBtn,
     button("🎮 Controles", "ghost", controlsHelp),
     button("⛶ Pantalla completa", "ghost", () => toggleFullscreen(stage)),
   );
 
-  const callout = el("div", { class: "callout", innerHTML: "Sos el <b>Jugador 1</b>: jugás con tu teclado/mando acá. Tu amigo (Jugador 2) verá el juego y controlará desde su compu. El juego tarda ~10-15s en aparecer." });
+  const callout = el("div", { class: "callout", innerHTML: "Sos el <b>Jugador 1</b>. El <b>modo justo</b> retrasa tus inputs la misma latencia que sufre tu amigo, así ninguno reacciona antes que el otro (no elimina la latencia del video del invitado, pero quita tu ventaja de reacción). El juego tarda ~10-15s en aparecer." });
 
   body.append(codeBox, el("div", { style: "height:14px" }), stage, toolbar, el("div", { style: "height:14px" }), callout);
 
@@ -116,10 +126,14 @@ function launchHost(body: HTMLElement, rom: File): void {
   }, 400);
   window.setTimeout(() => { if (!removed) { ov.remove(); window.clearInterval(waitRender); } }, 20000);
 
+  let handle: HostHandle | undefined;
   startHost({
     rom, gameContainer: "#game", room,
-    onStatus: (s: NetStatus) => pill.set(s.phase, s.connection, s.rttMs),
-  }).catch((e) => { ov.setText("Error: " + e.message); });
+    onStatus: (s: NetStatus) => {
+      const extra = s.phase === "connected" && s.fair ? ` · justo ${s.fairDelayMs}ms` : "";
+      pill.set(s.phase, s.connection + extra, s.rttMs);
+    },
+  }).then((h) => { handle = h; }).catch((e) => { ov.setText("Error: " + e.message); });
 }
 
 // --- GUEST -----------------------------------------------------------------

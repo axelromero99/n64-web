@@ -12,7 +12,7 @@
 // casual y 100% construible en el navegador. La latencia = red + video.
 
 import { launchLocal } from "../core/emulatorjs";
-import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1 } from "../input/n64";
+import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1, EMPTY_INPUT } from "../input/n64";
 import { createSignaling, type Signaling } from "./signaling";
 
 const ICE: RTCConfiguration = {
@@ -76,6 +76,10 @@ export interface NetStatus {
   videoReady: boolean;
   /** Round-trip time en ms (del par ICE), o null si aún no hay dato. */
   rttMs: number | null;
+  /** Modo justo (input-delay) activo — solo relevante para el host. */
+  fair?: boolean;
+  /** Retardo aplicado a los inputs del host, en ms. */
+  fairDelayMs?: number;
 }
 
 // Poll de estadísticas WebRTC para leer el RTT real del par conectado.
@@ -99,8 +103,12 @@ function publish(s: NetStatus) {
   (window as unknown as { __n64net?: NetStatus }).__n64net = { ...s };
 }
 
-function gm(): { simulateInput(p: number, i: number, v: number): void } | null {
-  return (window as unknown as { EJS_emulator?: { gameManager?: any } }).EJS_emulator?.gameManager ?? null;
+interface EJSGameManager {
+  simulateInput(p: number, i: number, v: number): void;
+  setKeyboardEnabled?(on: boolean): void;
+}
+function gm(): EJSGameManager | null {
+  return (window as unknown as { EJS_emulator?: { gameManager?: EJSGameManager } }).EJS_emulator?.gameManager ?? null;
 }
 
 // Escala una magnitud de stick (-128..127) al rango analógico de EmulatorJS.
@@ -109,19 +117,42 @@ function axis(v: number): number {
   return Math.round(m * AXIS_MAX);
 }
 
-function applyToPlayer2(input: N64Input): void {
+// Línea de retardo de input: guarda el estado del teclado con timestamps y
+// devuelve el estado "como era hace D ms". Se usa para el MODO JUSTO: retrasamos
+// los inputs del host la misma latencia que sufre el invitado, así el anfitrión
+// no tiene ventaja de reacción.
+class DelayLine {
+  private ev: { t: number; v: N64Input }[] = [{ t: 0, v: EMPTY_INPUT }];
+  push(v: N64Input): void {
+    this.ev.push({ t: performance.now(), v });
+    if (this.ev.length > 300) this.ev.splice(0, this.ev.length - 300);
+  }
+  at(delayMs: number): N64Input {
+    const cutoff = performance.now() - delayMs;
+    let v: N64Input = this.ev[0].v;
+    let last = 0;
+    for (let i = 0; i < this.ev.length; i++) {
+      if (this.ev[i].t <= cutoff) { v = this.ev[i].v; last = i; } else break;
+    }
+    if (last > 1) this.ev.splice(0, last); // podar lo ya consumido (dejar el aplicable)
+    return v;
+  }
+}
+
+// Aplica un N64Input al jugador `player` (0 = host/P1, 1 = guest/P2).
+function applyInput(player: 0 | 1, input: N64Input): void {
   const g = gm();
   if (!g) return;
   // Digitales (A, B, Z, Start, L, R, D-Pad) → 1/0.
-  for (const [bit, idx] of EJS_DIGITAL) g.simulateInput(1, idx, input.buttons & bit ? 1 : 0);
+  for (const [bit, idx] of EJS_DIGITAL) g.simulateInput(player, idx, input.buttons & bit ? 1 : 0);
   // Botones C = stick derecho → analógico (32767/0).
-  for (const [bit, idx] of EJS_C) g.simulateInput(1, idx, input.buttons & bit ? AXIS_MAX : 0);
+  for (const [bit, idx] of EJS_C) g.simulateInput(player, idx, input.buttons & bit ? AXIS_MAX : 0);
   // Stick izquierdo → analógico proporcional (con pequeña zona muerta).
   const dz = 8;
-  g.simulateInput(1, STICK.xPos, input.stickX > dz ? axis(input.stickX) : 0);
-  g.simulateInput(1, STICK.xNeg, input.stickX < -dz ? axis(input.stickX) : 0);
-  g.simulateInput(1, STICK.yPos, input.stickY > dz ? axis(input.stickY) : 0);
-  g.simulateInput(1, STICK.yNeg, input.stickY < -dz ? axis(input.stickY) : 0);
+  g.simulateInput(player, STICK.xPos, input.stickX > dz ? axis(input.stickX) : 0);
+  g.simulateInput(player, STICK.xNeg, input.stickX < -dz ? axis(input.stickX) : 0);
+  g.simulateInput(player, STICK.yPos, input.stickY > dz ? axis(input.stickY) : 0);
+  g.simulateInput(player, STICK.yNeg, input.stickY < -dz ? axis(input.stickY) : 0);
 }
 
 // captureStream sobre un canvas WebGL da frames NEGROS salvo que el contexto se
@@ -160,13 +191,18 @@ const waitFor = async (cond: () => boolean, ms = 120000) => {
 
 // --- HOST -------------------------------------------------------------------
 
+export interface HostHandle {
+  /** Activar/desactivar el modo justo (input-delay) en caliente. */
+  setFair: (on: boolean) => void;
+}
+
 export async function startHost(opts: {
   rom: File;
   gameContainer: string; // selector donde EmulatorJS monta el canvas (ej "#game")
   room: string;
   onStatus?: (s: NetStatus) => void;
-}): Promise<void> {
-  const status: NetStatus = { role: "host", connection: "arrancando emulador", phase: "starting", inputMsgs: 0, videoReady: false, rttMs: null };
+}): Promise<HostHandle> {
+  const status: NetStatus = { role: "host", connection: "arrancando emulador", phase: "starting", inputMsgs: 0, videoReady: false, rttMs: null, fair: true, fairDelayMs: 16 };
   const emit = () => { publish(status); opts.onStatus?.(status); };
   emit();
 
@@ -190,8 +226,35 @@ export async function startHost(opts: {
   const mctx = mirror.getContext("2d")!;
 
   let lastInput: N64Input = { buttons: 0, stickX: 0, stickY: 0 };
+
+  // MODO JUSTO: cuando está activo, capturamos el teclado del host (P1) nosotros,
+  // deshabilitamos el teclado interno de EmulatorJS, y aplicamos el input de P1
+  // con un retardo = a la latencia que sufre el invitado. Así ninguno reacciona
+  // antes que el otro. (El invitado igual ve el video con algo de latencia; esto
+  // empareja el TIMING DE INPUT, que es la ventaja concreta del anfitrión.)
+  const hostLine = new DelayLine();
+  let detachHostKb: (() => void) | null = null;
+  let fairActive = false;
+
+  const enableFair = () => {
+    const g = gm();
+    if (fairActive || !g || typeof g.setKeyboardEnabled !== "function") return;
+    g.setKeyboardEnabled(false); // apagar teclado interno de EmulatorJS para P1
+    detachHostKb = attachKeyboard(DEFAULT_KEYBOARD_P1, (inp) => hostLine.push(inp));
+    fairActive = true;
+    status.fair = true; emit();
+  };
+  const disableFair = () => {
+    const g = gm();
+    detachHostKb?.(); detachHostKb = null;
+    if (g && typeof g.setKeyboardEnabled === "function") g.setKeyboardEnabled(true);
+    fairActive = false;
+    status.fair = false; emit();
+  };
+
   const loop = () => {
-    applyToPlayer2(lastInput); // input del guest -> P2, cada frame
+    if (fairActive) applyInput(0, hostLine.at(status.fairDelayMs ?? 16)); // P1 con retardo
+    applyInput(1, lastInput); // input del guest -> P2, cada frame
     if (mirror.width !== canvas.width || mirror.height !== canvas.height) {
       mirror.width = canvas.width;
       mirror.height = canvas.height;
@@ -243,12 +306,22 @@ export async function startHost(opts: {
     pc.onconnectionstatechange = () => {
       if (!pc) return;
       const st = pc.connectionState;
-      if (st === "connected") { status.connection = "¡Jugador 2 conectado! 🎮"; status.phase = "connected"; }
-      else if (st === "disconnected" || st === "failed") { status.connection = "jugador 2 se desconectó"; status.phase = "waiting"; status.rttMs = null; pc = null; }
-      else { status.connection = st; }
+      if (st === "connected") {
+        status.connection = "¡Jugador 2 conectado! 🎮"; status.phase = "connected";
+        if (status.fair) enableFair(); // emparejar el timing de input
+      } else if (st === "disconnected" || st === "failed") {
+        status.connection = "jugador 2 se desconectó"; status.phase = "waiting"; status.rttMs = null; pc = null;
+        disableFair(); // el host vuelve a jugar normal mientras espera
+      } else { status.connection = st; }
       emit();
     };
-    pollRtt(pc, (ms) => { status.rttMs = ms; emit(); });
+    pollRtt(pc, (ms) => {
+      status.rttMs = ms;
+      // Retardo justo = latencia de ida (RTT/2), acotado. Es la demora que sufre
+      // el input del invitado en llegar; se la aplicamos también al host.
+      if (ms != null) status.fairDelayMs = Math.min(120, Math.max(16, Math.round(ms / 2)));
+      emit();
+    });
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -259,6 +332,15 @@ export async function startHost(opts: {
     if (msg.join) await startPeerForGuest();
     else if (msg.answer && pc) await pc.setRemoteDescription(msg.answer).catch(() => {});
     else if (msg.ice && pc) await pc.addIceCandidate(msg.ice).catch(() => {});
+  };
+
+  return {
+    setFair: (on: boolean) => {
+      status.fair = on;
+      if (on && pc?.connectionState === "connected") enableFair();
+      else if (!on) disableFair();
+      emit();
+    },
   };
 }
 
