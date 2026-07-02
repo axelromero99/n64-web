@@ -32,6 +32,15 @@ Un `EmulatorCore` (interfaz ya definida en `src/core/EmulatorCore.ts`) que cumpl
    si se serializa el estado desde JS. La lógica de predicción/rollback la aporta
    la librería; nosotros aportamos save/load/advance.
 
+## El bucle de rollback, en una frase
+
+Cada frame se envía el input local por el datachannel, se **predice** el input
+remoto (normalmente = el del frame anterior), se simula hacia delante; cuando
+llega el input remoto real, si difiere de la predicción se hace `loadState()`
+al último estado confirmado y se re-simula. Es exactamente lo que ya hace
+`src/v2/rollback.ts` con la sim de Pong — el core N64 solo reemplaza a la sim
+detrás de la misma interfaz (`step/serialize/deserialize/hash`).
+
 ## Presupuesto a validar (M2)
 
 En 16.6 ms el core debe: guardar 1 estado + (ante rollback) cargar + re-simular

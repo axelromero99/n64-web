@@ -38,7 +38,11 @@ declare global {
   }
 }
 
-const EJS_CDN = "https://cdn.emulatorjs.org/stable/data/";
+// Versión FIJADA (no "stable"): un update sorpresa del CDN podría cambiar los
+// índices de simulateInput o el comportamiento del core en producción sin que
+// nadie toque este repo. Para subirla: cambiar acá y correr
+// scripts/verify-controls.mjs + verify-fair.mjs contra la ROM real.
+const EJS_CDN = "https://cdn.emulatorjs.org/4.2.3/data/";
 
 // Esquema de teclado claro para el JUGADOR 1 (índices de botón de EmulatorJS N64).
 // Debe coincidir con el preset del guest (input/n64.ts) para que ambos jueguen igual.

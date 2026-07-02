@@ -23,10 +23,6 @@ export function button(label: string, variant: BtnVariant = "primary", onClick?:
   return b;
 }
 
-export function spinner(): HTMLElement {
-  return el("span", { class: "spinner" });
-}
-
 /** Pill de estado con color según la fase. */
 export function statusPill(): { root: HTMLElement; set: (phase: string, text: string, rtt?: number | null) => void } {
   const dot = el("span", { class: "pill-dot" });
@@ -119,4 +115,19 @@ export function makeRoomCode(len = 5): string {
   let code = "";
   for (let i = 0; i < len; i++) code += alphabet[rnd[i] % alphabet.length];
   return code;
+}
+
+/** Lee ?room=CODE de la URL (los links de invitación traen el código puesto). */
+export function roomFromUrl(): string | null {
+  const r = new URLSearchParams(location.search).get("room");
+  return r ? r.toUpperCase() : null;
+}
+
+/** Link de invitación: URL actual + código de sala (+ extras) + pantalla. */
+export function inviteLink(room: string, hash: string, extra: Record<string, string> = {}): string {
+  const u = new URL(location.href);
+  u.searchParams.set("room", room);
+  for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, v);
+  u.hash = hash;
+  return u.toString();
 }

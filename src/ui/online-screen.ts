@@ -1,20 +1,8 @@
 import { startHost, startGuest, type NetStatus, type GuestHandle, type HostHandle } from "../net/online";
 import { KEYBOARD_PRESETS } from "../input/n64";
-import { el, button, statusPill, romDropzone, overlay, toast, copyText, makeRoomCode } from "./components";
+import { el, button, statusPill, romDropzone, overlay, toast, copyText, makeRoomCode, roomFromUrl, inviteLink } from "./components";
 import { controlsHelp } from "./controls-help";
-
-// Lee ?room=CODE de la URL (para invitaciones).
-function urlRoom(): string | null {
-  const r = new URLSearchParams(location.search).get("room");
-  return r ? r.toUpperCase() : null;
-}
-
-function inviteLink(room: string): string {
-  const u = new URL(location.href);
-  u.searchParams.set("room", room);
-  u.hash = "online";
-  return u.toString();
-}
+import { onScreenLeave } from "./screens";
 
 export function renderOnline(host: HTMLElement, goBack: () => void): void {
   const panel = el("div", { class: "panel" });
@@ -33,7 +21,7 @@ export function renderOnline(host: HTMLElement, goBack: () => void): void {
     return;
   }
 
-  const preRoom = urlRoom();
+  const preRoom = roomFromUrl();
   if (preRoom) renderJoin(body, preRoom);
   else renderChoice(body);
 
@@ -85,7 +73,7 @@ function launchHost(body: HTMLElement, rom: File): void {
     toast((await copyText(room)) ? "Código copiado" : "No se pudo copiar");
   });
   const copyLink = button("🔗 Copiar link de invitación", "accent", async () => {
-    toast((await copyText(inviteLink(room))) ? "Link copiado — mandáselo a tu amigo" : "No se pudo copiar");
+    toast((await copyText(inviteLink(room, "online"))) ? "Link copiado — mandáselo a tu amigo" : "No se pudo copiar");
   });
   const codeBox = el("div", { class: "roomcode-box" },
     el("div", {}, el("div", { class: "label", textContent: "Código de sala" }), codeEl),
@@ -117,6 +105,8 @@ function launchHost(body: HTMLElement, rom: File): void {
     fairBtn,
     button("🎮 Controles", "ghost", controlsHelp),
     button("⛶ Pantalla completa", "ghost", () => toggleFullscreen(stage)),
+    // EmulatorJS no tiene teardown sin recargar; recargar ES cerrar la sala.
+    button("✕ Cerrar sala", "danger", () => location.reload()),
   );
 
   const callout = el("div", { class: "callout", innerHTML: "Sos el <b>Jugador 1</b>. El <b>modo justo</b> retrasa tus inputs la misma latencia que sufre tu amigo, así ninguno reacciona antes que el otro (no elimina la latencia del video del invitado, pero quita tu ventaja de reacción). El juego tarda ~10-15s en aparecer." });
@@ -133,13 +123,22 @@ function launchHost(body: HTMLElement, rom: File): void {
   window.setTimeout(() => { if (!removed) { ov.remove(); window.clearInterval(waitRender); } }, 20000);
 
   let handle: HostHandle | undefined;
-  startHost({
+  const pending = startHost({
     rom, gameContainer: "#game", room,
     onStatus: (s: NetStatus) => {
       const extra = s.phase === "connected" && s.fair ? ` · justo ${s.fairDelayMs}ms` : "";
       pill.set(s.phase, s.connection + extra, s.rttMs);
     },
-  }).then((h) => { handle = h; }).catch((e) => { ov.setText("Error: " + e.message); });
+  });
+  pending.then((h) => { handle = h; }).catch((e: Error) => { ov.setText("Error: " + e.message); pill.set("error", e.message); });
+
+  onScreenLeave(() => {
+    window.clearInterval(waitRender);
+    pending.then((h) => h.stop()).catch(() => { /* nunca arrancó */ });
+    // El emulador no tiene teardown sin recargar: si quedó corriendo (audio
+    // incluido), recargar deja la app limpia en la pantalla nueva.
+    if (window.EJS_emulator) location.reload();
+  });
 }
 
 // --- GUEST -----------------------------------------------------------------
@@ -219,6 +218,7 @@ function connectGuest(body: HTMLElement, code: string): void {
   // Si el usuario sale antes de que la conexión termine de armarse, igual hay
   // que cortarla cuando resuelva.
   exitGuest = () => { pending.then((h) => h.stop()).catch(() => { /* nunca arrancó */ }); };
+  onScreenLeave(() => exitGuest());
 }
 
 // --- utils -----------------------------------------------------------------

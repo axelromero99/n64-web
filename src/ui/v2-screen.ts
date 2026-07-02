@@ -5,23 +5,15 @@
 
 import { startMatch, type MatchStatus, type MatchHandle, type Netcode } from "../v2/peer";
 import type { SimInput } from "../v2/sim";
-import { el, button, statusPill, toast, copyText, makeRoomCode } from "./components";
+import { el, button, statusPill, toast, copyText, makeRoomCode, roomFromUrl, inviteLink } from "./components";
+import { onScreenLeave } from "./screens";
 
 // Netcode elegido (rollback por defecto). Se puede fijar por URL (?nc=lockstep).
 let selectedNetcode: Netcode =
   new URLSearchParams(location.search).get("nc") === "lockstep" ? "lockstep" : "rollback";
 
-function urlRoom(): string | null {
-  const r = new URLSearchParams(location.search).get("room");
-  return r ? r.toUpperCase() : null;
-}
-function inviteLink(room: string): string {
-  const u = new URL(location.href);
-  u.searchParams.set("room", room);
-  u.searchParams.set("nc", selectedNetcode); // el rival usa el mismo netcode
-  u.hash = "v2";
-  return u.toString();
-}
+// El link de invitación lleva el netcode elegido para que el rival use el mismo.
+const v2Invite = (room: string) => inviteLink(room, "v2", { nc: selectedNetcode });
 
 // Estado de teclado → input de paleta (-1 arriba, +1 abajo). Devuelve también
 // el detach: sin él, cada visita a la pantalla dejaba listeners globales vivos
@@ -62,7 +54,7 @@ export function renderV2(host: HTMLElement, goBack: () => void): void {
     return;
   }
 
-  const pre = urlRoom();
+  const pre = roomFromUrl();
   if (pre) startGame(body, pre, "join");
   else renderChoice(body);
 
@@ -132,7 +124,7 @@ function startGame(body: HTMLElement, room: string, role: "create" | "join"): vo
   // Barra de código/invitación solo para el creador.
   if (role === "create") {
     const copyLink = button("🔗 Copiar link", "accent", async () => {
-      toast((await copyText(inviteLink(room))) ? "Link copiado — mandáselo a tu rival" : "No se pudo copiar");
+      toast((await copyText(v2Invite(room))) ? "Link copiado — mandáselo a tu rival" : "No se pudo copiar");
     });
     body.append(el("div", { class: "roomcode-box" },
       el("div", {}, el("div", { class: "label", textContent: "Código de partida" }), el("span", { class: "code", textContent: room })),
@@ -151,6 +143,7 @@ function startGame(body: HTMLElement, room: string, role: "create" | "join"): vo
 
   const input = paddleInput();
   const stopAll = () => { handle?.stop(); input.detach(); };
+  onScreenLeave(stopAll);
   const handle: MatchHandle = startMatch({
     room, role, netcode: selectedNetcode, canvas, readInput: input.read,
     onStatus: (s: MatchStatus) => {

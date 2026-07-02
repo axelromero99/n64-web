@@ -239,8 +239,11 @@ export async function startHost(opts: {
     emit();
   };
 
-  let rafId = 0;
-  const loop = () => {
+  // Bucle de red del host: aplicar inputs + copiar el frame al espejo. Es un
+  // setInterval y NO requestAnimationFrame a propósito: rAF se congela con la
+  // pestaña oculta y dejaba de aplicarse el input del guest. Con timers, y con
+  // el audio del juego sonando, Chrome no acelera el throttling en background.
+  const loopTimer = window.setInterval(() => {
     if (fairActive) applyInput(0, hostLine.at(status.fairDelayMs ?? 16)); // P1 con retardo
     applyInput(1, lastInput); // input del guest -> P2, cada frame
     if (mirror.width !== canvas.width || mirror.height !== canvas.height) {
@@ -248,9 +251,7 @@ export async function startHost(opts: {
       mirror.height = canvas.height;
     }
     try { mctx.drawImage(canvas, 0, 0); } catch { /* canvas aún no listo */ }
-    rafId = requestAnimationFrame(loop);
-  };
-  rafId = requestAnimationFrame(loop);
+  }, 16);
 
   const sig: Signaling = createSignaling(opts.room, "host");
   sig.onError = (info) => { status.connection = info; status.phase = "error"; emit(); };
@@ -372,7 +373,7 @@ export async function startHost(opts: {
     },
     stop: () => {
       stopped = true;
-      cancelAnimationFrame(rafId);
+      window.clearInterval(loopTimer);
       teardownPeer();
       sig.close();
     },

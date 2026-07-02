@@ -1,11 +1,18 @@
 import { launchLocal } from "../core/emulatorjs";
-import { renderSpike } from "../m0/spike";
 import { renderOnline } from "./online-screen";
 import { renderV2 } from "./v2-screen";
 import { controlsHelp } from "./controls-help";
 import { el, button, romDropzone, overlay, toast } from "./components";
 
 export type Screen = "landing" | "local" | "online" | "m0" | "v2";
+
+// Cleanup de la pantalla activa (conexiones, timers, listeners globales). La
+// pantalla que arranca algo con vida propia lo registra acá; render() lo
+// ejecuta al navegar para no dejar sesiones/listeners zombies.
+let screenCleanup: (() => void) | null = null;
+export function onScreenLeave(fn: () => void): void {
+  screenCleanup = fn;
+}
 
 // ---------- Header + hero ----------
 
@@ -98,10 +105,22 @@ function local(go: (s: Screen) => void): HTMLElement {
     );
     holder.append(stage, toolbar);
     launchLocal({ container: "#game", rom });
-    // Quitar overlay cuando aparezca el canvas del juego.
+    // Quitar overlay cuando aparezca el canvas del juego; si en 30 s no
+    // apareció, algo falló (CDN caído, ROM inválida): avisar en vez de girar.
+    const t0 = performance.now();
     const t = window.setInterval(() => {
       if (document.querySelector("#game canvas")) { ov.remove(); window.clearInterval(t); }
+      else if (performance.now() - t0 > 30000) {
+        ov.setText("El juego no arrancó. Puede ser la ROM (¿es un .z64/.n64/.v64 válido?) o tu conexión al CDN del emulador. Recargá la página para reintentar.");
+        window.clearInterval(t);
+      }
     }, 500);
+    onScreenLeave(() => {
+      window.clearInterval(t);
+      // El emulador no tiene teardown sin recargar: si quedó corriendo (audio
+      // incluido), recargar deja la app limpia en la pantalla nueva.
+      if (window.EJS_emulator) location.reload();
+    });
   });
   holder.append(dz);
 
@@ -112,7 +131,10 @@ function local(go: (s: Screen) => void): HTMLElement {
 
 function m0Screen(): HTMLElement {
   const panel = el("div", { class: "panel" });
-  renderSpike(panel);
+  panel.append(el("p", { class: "muted small", textContent: "Cargando el banco de pruebas…" }));
+  // Import dinámico: nostalgist solo se descarga si alguien entra al spike,
+  // no en cada visita a la página.
+  void import("../m0/spike").then(({ renderSpike }) => renderSpike(panel));
   return panel;
 }
 
@@ -128,6 +150,8 @@ function footer(): HTMLElement {
 // ---------- Router ----------
 
 export function render(app: HTMLElement, go: (s: Screen) => void, screen: Screen): void {
+  screenCleanup?.();
+  screenCleanup = null;
   app.replaceChildren();
   app.append(topbar(go));
   if (screen === "landing") app.append(landing(go));
