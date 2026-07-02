@@ -29,9 +29,11 @@ export function signalingUrl(room: string): string {
   const override = new URLSearchParams(location.search).get("signal") || undefined;
   const base = override || configured;
   if (base) {
-    const u = new URL(base);
-    u.searchParams.set("room", room);
-    return u.toString();
+    try {
+      const u = new URL(base);
+      u.searchParams.set("room", room);
+      return u.toString();
+    } catch { /* ?signal= inválido → caer al same-origin */ }
   }
   // Same-origin (dev server de Vite). ws:// o wss:// según el protocolo de la página.
   const proto = location.protocol === "https:" ? "wss:" : "ws:";

@@ -14,10 +14,7 @@
 import { launchLocal } from "../core/emulatorjs";
 import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1, EMPTY_INPUT } from "../input/n64";
 import { createSignaling, type Signaling } from "./signaling";
-
-const ICE: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:stun.l.google.com:19302" }],
-};
+import { ICE_CONFIG, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "./rtc";
 
 // Reordena los codecs de video para preferir los de mejor calidad (VP9/H264)
 // sobre el VP8 por defecto. Debe llamarse ANTES de createOffer.
@@ -82,23 +79,6 @@ export interface NetStatus {
   fairDelayMs?: number;
 }
 
-// Poll de estadísticas WebRTC para leer el RTT real del par conectado.
-function pollRtt(pc: RTCPeerConnection, onRtt: (ms: number | null) => void): () => void {
-  const id = window.setInterval(async () => {
-    if (pc.connectionState !== "connected") return;
-    try {
-      const stats = await pc.getStats();
-      let rtt: number | null = null;
-      stats.forEach((r) => {
-        if (r.type === "candidate-pair" && (r as any).nominated && (r as any).currentRoundTripTime != null) {
-          rtt = Math.round((r as any).currentRoundTripTime * 1000);
-        }
-      });
-      onRtt(rtt);
-    } catch { /* noop */ }
-  }, 1500);
-  return () => window.clearInterval(id);
-}
 function publish(s: NetStatus) {
   (window as unknown as { __n64net?: NetStatus }).__n64net = { ...s };
 }
@@ -181,10 +161,10 @@ function pickGameCanvas(container: string): HTMLCanvasElement {
   return list.sort((a, b) => b.width * b.height - a.width * a.height)[0];
 }
 
-const waitFor = async (cond: () => boolean, ms = 120000) => {
+const waitFor = async (cond: () => boolean, ms = 120000, what = "el emulador no respondió — probá recargar la página") => {
   const t0 = performance.now();
   while (!cond()) {
-    if (performance.now() - t0 > ms) throw new Error("timeout esperando condición");
+    if (performance.now() - t0 > ms) throw new Error(what);
     await new Promise((r) => setTimeout(r, 200));
   }
 };
@@ -194,6 +174,9 @@ const waitFor = async (cond: () => boolean, ms = 120000) => {
 export interface HostHandle {
   /** Activar/desactivar el modo justo (input-delay) en caliente. */
   setFair: (on: boolean) => void;
+  /** Cierra la sala: corta la conexión, la señalización y el loop de red.
+   *  (El emulador en sí sigue: EmulatorJS no tiene teardown sin recargar.) */
+  stop: () => void;
 }
 
 export async function startHost(opts: {
@@ -208,8 +191,8 @@ export async function startHost(opts: {
 
   patchWebGLForCapture();
   launchLocal({ container: opts.gameContainer, rom: opts.rom });
-  await waitFor(() => !!gm());
-  await waitFor(() => pickGameCanvas(opts.gameContainer)?.width > 0);
+  await waitFor(() => !!gm(), 120000, "el emulador no arrancó — ¿la ROM es válida? Probá recargar la página");
+  await waitFor(() => pickGameCanvas(opts.gameContainer)?.width > 0, 120000, "el juego no mostró imagen — probá recargar la página");
   const canvas = pickGameCanvas(opts.gameContainer);
   status.connection = "sala lista — esperando al jugador 2";
   status.phase = "waiting";
@@ -232,26 +215,31 @@ export async function startHost(opts: {
   // con un retardo = a la latencia que sufre el invitado. Así ninguno reacciona
   // antes que el otro. (El invitado igual ve el video con algo de latencia; esto
   // empareja el TIMING DE INPUT, que es la ventaja concreta del anfitrión.)
+  // fairWanted = preferencia del usuario (el toggle). fairActive = si AHORA
+  // estamos capturando/retrasando (solo con un guest conectado). Separarlos hace
+  // que la preferencia sobreviva a una desconexión + reconexión del guest.
   const hostLine = new DelayLine();
   let detachHostKb: (() => void) | null = null;
+  let fairWanted = true;
   let fairActive = false;
 
-  const enableFair = () => {
+  const applyFair = (connected: boolean) => {
     const g = gm();
-    if (fairActive || !g || typeof g.setKeyboardEnabled !== "function") return;
-    g.setKeyboardEnabled(false); // apagar teclado interno de EmulatorJS para P1
-    detachHostKb = attachKeyboard(DEFAULT_KEYBOARD_P1, (inp) => hostLine.push(inp));
-    fairActive = true;
-    status.fair = true; emit();
-  };
-  const disableFair = () => {
-    const g = gm();
-    detachHostKb?.(); detachHostKb = null;
-    if (g && typeof g.setKeyboardEnabled === "function") g.setKeyboardEnabled(true);
-    fairActive = false;
-    status.fair = false; emit();
+    const shouldBeActive = fairWanted && connected;
+    if (shouldBeActive && !fairActive && g && typeof g.setKeyboardEnabled === "function") {
+      g.setKeyboardEnabled(false); // apagar teclado interno de EmulatorJS para P1
+      detachHostKb = attachKeyboard(DEFAULT_KEYBOARD_P1, (inp) => hostLine.push(inp));
+      fairActive = true;
+    } else if (!shouldBeActive && fairActive) {
+      detachHostKb?.(); detachHostKb = null;
+      if (g && typeof g.setKeyboardEnabled === "function") g.setKeyboardEnabled(true);
+      fairActive = false;
+    }
+    status.fair = fairWanted;
+    emit();
   };
 
+  let rafId = 0;
   const loop = () => {
     if (fairActive) applyInput(0, hostLine.at(status.fairDelayMs ?? 16)); // P1 con retardo
     applyInput(1, lastInput); // input del guest -> P2, cada frame
@@ -260,25 +248,46 @@ export async function startHost(opts: {
       mirror.height = canvas.height;
     }
     try { mctx.drawImage(canvas, 0, 0); } catch { /* canvas aún no listo */ }
-    requestAnimationFrame(loop);
+    rafId = requestAnimationFrame(loop);
   };
-  requestAnimationFrame(loop);
+  rafId = requestAnimationFrame(loop);
 
   const sig: Signaling = createSignaling(opts.room, "host");
   sig.onError = (info) => { status.connection = info; status.phase = "error"; emit(); };
   let pc: RTCPeerConnection | null = null;
+  let candidates: RemoteCandidates | null = null;
+  let stopRtt: (() => void) | null = null;
+  let stopped = false;
+
+  // Baja la sesión con el guest actual y deja la sala lista para otro join.
+  // Importante: cerrar el pc viejo y parar su poll de RTT (si no, quedan
+  // conexiones zombie que pueden "revivir"), y RESETEAR el input de P2 (si no,
+  // el último input del guest queda aplicándose para siempre).
+  const teardownPeer = (msg?: string) => {
+    if (!pc) return;
+    stopRtt?.(); stopRtt = null;
+    try { pc.close(); } catch { /* ya cerrado */ }
+    pc = null;
+    candidates = null;
+    lastInput = EMPTY_INPUT;
+    status.rttMs = null;
+    applyFair(false); // el host vuelve a jugar normal mientras espera
+    if (msg && !stopped) { status.connection = msg; status.phase = "waiting"; emit(); }
+  };
 
   // El peer + la oferta se crean SOLO cuando el guest anuncia "join". Así el
   // handshake funciona sin importar el orden (crear sala antes o después de unirse)
   // y los candidatos ICE se emiten con el guest ya escuchando.
   async function startPeerForGuest(): Promise<void> {
-    if (pc) return; // ya hay una sesión en curso: ignorar joins repetidos
+    if (pc || stopped) return; // ya hay una sesión en curso: ignorar joins repetidos
     status.connection = "jugador 2 detectado — conectando…";
     status.phase = "connecting";
     emit();
 
     const stream = mirror.captureStream(30);
-    pc = new RTCPeerConnection(ICE);
+    pc = new RTCPeerConnection(ICE_CONFIG);
+    const thisPc = pc;
+    candidates = new RemoteCandidates(pc);
     for (const track of stream.getVideoTracks()) {
       track.contentHint = "motion"; // priorizar fluidez de movimiento
       const sender = pc.addTrack(track, stream);
@@ -297,25 +306,36 @@ export async function startHost(opts: {
     const dc = pc.createDataChannel("input", { ordered: false, maxRetransmits: 0 });
     dc.binaryType = "arraybuffer";
     dc.onmessage = (e) => {
-      lastInput = unpackInput(new Int32Array(e.data as ArrayBuffer)[0]);
+      const data = e.data as ArrayBuffer;
+      if (!(data instanceof ArrayBuffer) || data.byteLength !== 4) return; // solo nuestro formato
+      lastInput = unpackInput(new Int32Array(data)[0]);
       status.inputMsgs++;
       emit();
     };
+    // Si el canal muere antes que ICE lo note, soltar el input de P2 ya.
+    dc.onclose = () => { if (pc === thisPc) lastInput = EMPTY_INPUT; };
 
     pc.onicecandidate = (e) => e.candidate && sig.send({ ice: e.candidate.toJSON() });
-    pc.onconnectionstatechange = () => {
-      if (!pc) return;
-      const st = pc.connectionState;
-      if (st === "connected") {
-        status.connection = "¡Jugador 2 conectado! 🎮"; status.phase = "connected";
-        if (status.fair) enableFair(); // emparejar el timing de input
-      } else if (st === "disconnected" || st === "failed") {
-        status.connection = "jugador 2 se desconectó"; status.phase = "waiting"; status.rttMs = null; pc = null;
-        disableFair(); // el host vuelve a jugar normal mientras espera
-      } else { status.connection = st; }
-      emit();
-    };
-    pollRtt(pc, (ms) => {
+    watchConnection(pc, {
+      onState: (st) => {
+        if (pc !== thisPc) return;
+        if (st === "connected") {
+          status.connection = "¡Jugador 2 conectado! 🎮";
+          status.phase = "connected";
+          applyFair(true); // emparejar el timing de input
+        } else if (st === "disconnected") {
+          status.connection = "conexión inestable — esperando que vuelva…";
+        } else if (st !== "failed" && st !== "closed") {
+          status.connection = st;
+        }
+        emit();
+      },
+      onLost: () => {
+        if (pc !== thisPc) return;
+        teardownPeer("jugador 2 se desconectó — la sala sigue abierta para que vuelva a entrar");
+      },
+    });
+    stopRtt = pollRtt(pc, (ms) => {
       status.rttMs = ms;
       // Retardo justo = latencia de ida (RTT/2), acotado. Es la demora que sufre
       // el input del invitado en llegar; se la aplicamos también al host.
@@ -328,18 +348,33 @@ export async function startHost(opts: {
     sig.send({ offer });
   }
 
-  sig.onMessage = async (msg) => {
-    if (msg.join) await startPeerForGuest();
-    else if (msg.answer && pc) await pc.setRemoteDescription(msg.answer).catch(() => {});
-    else if (msg.ice && pc) await pc.addIceCandidate(msg.ice).catch(() => {});
-  };
+  // Serializado: procesa un mensaje por vez (evita addIceCandidate durante un
+  // setRemoteDescription pendiente, que perdía candidatos en silencio).
+  sig.onMessage = serializeMessages(async (msg) => {
+    if (msg.join) {
+      await startPeerForGuest();
+    } else if (msg.answer && pc) {
+      // Solo la primera answer de la oferta vigente (una 2ª — p.ej. dos guests
+      // a la vez — dejaría el pc en estado inválido).
+      if (pc.signalingState === "have-local-offer") {
+        await pc.setRemoteDescription(msg.answer).catch(() => { /* answer inválida */ });
+        await candidates?.flush();
+      }
+    } else if (msg.ice) {
+      await candidates?.add(msg.ice);
+    }
+  });
 
   return {
     setFair: (on: boolean) => {
-      status.fair = on;
-      if (on && pc?.connectionState === "connected") enableFair();
-      else if (!on) disableFair();
-      emit();
+      fairWanted = on;
+      applyFair(pc?.connectionState === "connected");
+    },
+    stop: () => {
+      stopped = true;
+      cancelAnimationFrame(rafId);
+      teardownPeer();
+      sig.close();
     },
   };
 }
@@ -362,25 +397,6 @@ export async function startGuest(opts: {
   const emit = () => { publish(status); opts.onStatus?.(status); };
   emit();
 
-  const pc = new RTCPeerConnection(ICE);
-  (window as unknown as { __n64guestPc?: RTCPeerConnection }).__n64guestPc = pc;
-  pc.addTransceiver("video", { direction: "recvonly" });
-  pc.ontrack = (e) => {
-    // Minimizar el jitter buffer del decoder → mucha menos latencia de video.
-    try {
-      const rx = e.receiver as RTCRtpReceiver & { playoutDelayHint?: number; jitterBufferTarget?: number };
-      rx.playoutDelayHint = 0;
-      rx.jitterBufferTarget = 0;
-    } catch { /* no soportado en este navegador */ }
-    opts.videoEl.srcObject = e.streams[0];
-    opts.videoEl.muted = true;
-    opts.videoEl.autoplay = true;
-    opts.videoEl.playsInline = true;
-    void opts.videoEl.play().catch(() => {});
-    status.videoReady = true;
-    emit();
-  };
-
   const dbg = ((window as unknown as { __n64dbg?: Record<string, unknown> }).__n64dbg = {
     dcFired: false,
     dcOpen: false,
@@ -390,14 +406,21 @@ export async function startGuest(opts: {
   let currentMap: KeyboardMap = opts.keyboard ?? DEFAULT_KEYBOARD_P1;
   let detach = () => {};
   let dc: RTCDataChannel | null = null;
+  let pc: RTCPeerConnection | null = null;
+  let candidates: RemoteCandidates | null = null;
+  let stopRtt: (() => void) | null = null;
+  let answered = false;
+  let stopped = false;
 
   const sendInput = (input: N64Input) => {
     dbg.keydown = (dbg.keydown as number) + 1;
     status.inputMsgs++;
     emit();
     if (dc && dc.readyState === "open") {
-      dc.send(new Int32Array([packInput(input)]).buffer);
-      dbg.sent = (dbg.sent as number) + 1;
+      try {
+        dc.send(new Int32Array([packInput(input)]).buffer);
+        dbg.sent = (dbg.sent as number) + 1;
+      } catch { /* el canal se cerró entre el check y el send */ }
     }
   };
   const reattach = (map: KeyboardMap) => {
@@ -406,28 +429,100 @@ export async function startGuest(opts: {
     detach = attachKeyboard(map, sendInput);
   };
 
-  pc.ondatachannel = (e) => {
-    dc = e.channel;
-    dc.binaryType = "arraybuffer";
-    dbg.dcFired = true;
-    dc.onopen = () => (dbg.dcOpen = true);
-    reattach(currentMap);
-  };
-
   const sig = createSignaling(opts.room, "guest");
   sig.onError = (info) => { status.connection = info; status.phase = "error"; emit(); };
-  pc.onicecandidate = (e) => e.candidate && sig.send({ ice: e.candidate.toJSON() });
-  pc.onconnectionstatechange = () => {
-    const st = pc.connectionState;
-    if (st === "connected") { status.connection = "conectado ✓ (el juego tarda ~10-15s en aparecer)"; status.phase = "connected"; }
-    else if (st === "disconnected" || st === "failed") { status.connection = "se perdió la conexión"; status.phase = "error"; status.rttMs = null; }
-    else { status.connection = st; }
-    emit();
-  };
-  pollRtt(pc, (ms) => { status.rttMs = ms; emit(); });
 
-  let answered = false;
-  sig.onMessage = async (msg) => {
+  // Anuncia "join" y reintenta hasta recibir la oferta. Cubre unirse ANTES de
+  // que el host esté listo, DESPUÉS de que ya haya ofertado, y el re-join tras
+  // una caída. Tras ~8 s sin respuesta, casi seguro no hay host: avisar.
+  let joinTimer = 0;
+  const startJoining = () => {
+    window.clearInterval(joinTimer);
+    let tries = 0;
+    sig.send({ join: true });
+    joinTimer = window.setInterval(() => {
+      if (answered || stopped) { window.clearInterval(joinTimer); return; }
+      tries++;
+      if (tries < 8) {
+        status.connection = "buscando la sala del host…";
+        status.phase = "connecting";
+      } else {
+        status.connection = "no encuentro una sala con ese código. ¿El host ya creó la sala y cargó su ROM?";
+        status.phase = "error";
+      }
+      emit();
+      sig.send({ join: true });
+    }, 1000);
+  };
+
+  // Crea una sesión WebRTC nueva (la primera, o una limpia tras una caída).
+  const newPeer = () => {
+    stopRtt?.(); stopRtt = null;
+    try { pc?.close(); } catch { /* ya cerrado */ }
+    answered = false;
+    dc = null;
+    pc = new RTCPeerConnection(ICE_CONFIG);
+    const thisPc = pc;
+    candidates = new RemoteCandidates(pc);
+    (window as unknown as { __n64guestPc?: RTCPeerConnection }).__n64guestPc = pc;
+
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.ontrack = (e) => {
+      // Minimizar el jitter buffer del decoder → mucha menos latencia de video.
+      try {
+        const rx = e.receiver as RTCRtpReceiver & { playoutDelayHint?: number; jitterBufferTarget?: number };
+        rx.playoutDelayHint = 0;
+        rx.jitterBufferTarget = 0;
+      } catch { /* no soportado en este navegador */ }
+      opts.videoEl.srcObject = e.streams[0];
+      opts.videoEl.muted = true;
+      opts.videoEl.autoplay = true;
+      opts.videoEl.playsInline = true;
+      void opts.videoEl.play().catch(() => {});
+      status.videoReady = true;
+      emit();
+    };
+    pc.ondatachannel = (e) => {
+      dc = e.channel;
+      dc.binaryType = "arraybuffer";
+      dbg.dcFired = true;
+      dc.onopen = () => (dbg.dcOpen = true);
+      reattach(currentMap);
+    };
+    pc.onicecandidate = (e) => e.candidate && sig.send({ ice: e.candidate.toJSON() });
+    watchConnection(pc, {
+      onState: (st) => {
+        if (pc !== thisPc) return;
+        if (st === "connected") {
+          status.connection = "conectado ✓ (el juego tarda ~10-15s en aparecer)";
+          status.phase = "connected";
+        } else if (st === "disconnected") {
+          status.connection = "conexión inestable — esperando que vuelva…";
+        } else if (st !== "failed" && st !== "closed") {
+          status.connection = st;
+        }
+        emit();
+      },
+      onLost: () => {
+        if (pc !== thisPc || stopped) return;
+        // Reintento automático: sesión limpia + re-join (el host acepta un join
+        // nuevo cuando su sesión anterior también cayó).
+        status.connection = "se perdió la conexión — reintentando…";
+        status.phase = "connecting";
+        status.rttMs = null;
+        status.videoReady = false;
+        emit();
+        newPeer();
+        startJoining();
+      },
+    });
+    stopRtt = pollRtt(pc, (ms) => { status.rttMs = ms; emit(); });
+  };
+
+  // Serializado: procesa un mensaje por vez (evita addIceCandidate durante un
+  // setRemoteDescription pendiente, que perdía candidatos en silencio).
+  sig.onMessage = serializeMessages(async (msg) => {
+    if (!pc || stopped) return;
     if (msg.offer && !answered) {
       answered = true;
       status.connection = "oferta recibida — respondiendo…";
@@ -436,32 +531,24 @@ export async function startGuest(opts: {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       sig.send({ answer });
+      await candidates?.flush();
     } else if (msg.ice) {
-      await pc.addIceCandidate(msg.ice).catch(() => {});
+      await candidates?.add(msg.ice);
     }
-  };
+  });
 
-  // Anunciar "join" ya, y reintentar hasta recibir la oferta. Cubre el caso de
-  // unirse ANTES de que el host esté listo Y después de que ya haya ofertado.
-  sig.send({ join: true });
-  let tries = 0;
-  const joinTimer = window.setInterval(() => {
-    if (answered) { window.clearInterval(joinTimer); return; }
-    tries++;
-    // Tras ~8s sin respuesta, casi seguro no hay host en esa sala: avisar.
-    if (tries < 8) {
-      status.connection = "buscando la sala del host…";
-      status.phase = "connecting";
-    } else {
-      status.connection = "no encuentro una sala con ese código. ¿El host ya creó la sala y cargó su ROM?";
-      status.phase = "error";
-    }
-    emit();
-    sig.send({ join: true });
-  }, 1000);
+  newPeer();
+  startJoining();
 
   return {
-    stop: () => { window.clearInterval(joinTimer); detach(); pc.close(); sig.close(); },
+    stop: () => {
+      stopped = true;
+      window.clearInterval(joinTimer);
+      stopRtt?.();
+      detach();
+      try { pc?.close(); } catch { /* ya cerrado */ }
+      sig.close();
+    },
     setKeyboard: (map: KeyboardMap) => reattach(map),
   };
 }

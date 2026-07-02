@@ -27,6 +27,12 @@ export function renderOnline(host: HTMLElement, goBack: () => void): void {
   const body = el("div");
   panel.append(body);
 
+  if (typeof RTCPeerConnection === "undefined") {
+    body.append(el("div", { class: "callout warn", innerHTML: "Tu navegador no soporta <b>WebRTC</b>, que es lo que conecta a los dos jugadores. Probá con Chrome, Edge o Firefox actualizados." }));
+    host.append(panel);
+    return;
+  }
+
   const preRoom = urlRoom();
   if (preRoom) renderJoin(body, preRoom);
   else renderChoice(body);
@@ -160,6 +166,7 @@ function renderJoin(body: HTMLElement, preCode: string): void {
 
 function connectGuest(body: HTMLElement, code: string): void {
   body.replaceChildren();
+  let exitGuest: () => void = () => { /* se asigna al arrancar la conexión */ };
   const pill = statusPill();
   pill.set("connecting", "Conectando…");
 
@@ -186,7 +193,7 @@ function connectGuest(body: HTMLElement, code: string): void {
     el("span", { class: "muted small", textContent: "Controles:" }), preset,
     button("🎮 Ayuda", "ghost", controlsHelp),
     button("⛶", "ghost", () => toggleFullscreen(stage)),
-    button("Salir", "danger", () => { handle?.stop(); renderChoice(body); }),
+    button("Salir", "danger", () => { exitGuest(); renderChoice(body); }),
   );
 
   const callout = el("div", { class: "callout" }, el("span", {}, "Sos el "), el("b", { textContent: "Jugador 2" }), el("span", {}, ". Preset actual: "), hintEl);
@@ -195,14 +202,23 @@ function connectGuest(body: HTMLElement, code: string): void {
 
   let handle: GuestHandle | undefined;
   let cleared = false;
-  startGuest({
+  const pending = startGuest({
     videoEl: video, room: code, keyboard: KEYBOARD_PRESETS[0].map,
     onStatus: (s: NetStatus) => {
       if (!cleared && s.videoReady) { cleared = true; ov.remove(); }
       if (s.phase === "error") ov.setText(s.connection);
       pill.set(s.phase, s.phase === "connected" ? "Conectado" : s.connection, s.rttMs);
     },
-  }).then((h) => { handle = h; applyHint(); });
+  });
+  pending
+    .then((h) => { handle = h; applyHint(); })
+    .catch((e: Error) => {
+      pill.set("error", "No se pudo iniciar la conexión");
+      ov.setText("No se pudo iniciar la conexión: " + e.message);
+    });
+  // Si el usuario sale antes de que la conexión termine de armarse, igual hay
+  // que cortarla cuando resuelva.
+  exitGuest = () => { pending.then((h) => h.stop()).catch(() => { /* nunca arrancó */ }); };
 }
 
 // --- utils -----------------------------------------------------------------
