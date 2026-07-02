@@ -59,8 +59,8 @@ function landing(go: (s: Screen) => void): HTMLElement {
   const v2 = el("div", { class: "card", style: "margin-top:18px" },
     el("div", { class: "arrow", textContent: "→" }),
     el("div", { class: "card-icon", textContent: "🧪" }),
-    el("h2", { innerHTML: 'Netcode justo <span class="badge">v2 · experimental</span>' }),
-    el("p", { textContent: "Demo del online competitivo: ambos corren la misma simulación e intercambian solo inputs (lockstep determinista). Cero ventaja. El motor que después manejará N64." }),
+    el("h2", { innerHTML: 'Netcode justo <span class="badge">v2 · rollback</span>' }),
+    el("p", { textContent: "Demo del online competitivo: ambos corren la misma simulación e intercambian solo inputs, con lockstep y rollback deterministas. Cero ventaja, verificado. El motor que después manejará N64." }),
   );
   v2.onclick = () => go("v2");
   wrap.append(v2);

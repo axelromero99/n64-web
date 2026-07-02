@@ -4,28 +4,42 @@
 // dos peers corren la misma simulación y solo intercambian inputs por un
 // datachannel confiable. El "creador" de la sala genera la SEMILLA compartida y
 // la manda al unirse el otro → ambos arrancan la sim idéntica (fairness real).
+//
+// Netcode elegible: "rollback" (predice + corrige, oculta la latencia) o
+// "lockstep" (espera al rival). Debug: ?lat=NN agrega latencia artificial a los
+// envíos para sentir/probar el rollback.
 
 import { createSignaling, type Signaling } from "../net/signaling";
 import { Lockstep, type NetMsg } from "./lockstep";
+import { Rollback } from "./rollback";
 import { PongSim, type SimInput } from "./sim";
 
 const ICE: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:stun.l.google.com:19302" }],
 };
 
+export type Netcode = "rollback" | "lockstep";
+
 export interface MatchStatus {
   phase: "connecting" | "connected" | "error";
   connection: string;
   youAre: 0 | 1;
   rttMs: number | null;
+  netcode: Netcode;
   frame: number;
-  stalled: boolean;
   desync: boolean;
-  ahead: number;
+  // lockstep
+  stalled?: boolean;
+  ahead?: number;
+  // rollback
+  confirmed?: number;
+  predicting?: number;
+  rollbacks?: number;
 }
 
 type SeedMsg = { t: "seed"; seed: number };
 type Wire = NetMsg | SeedMsg;
+type Engine = Lockstep | Rollback;
 
 export interface MatchHandle {
   stop: () => void;
@@ -34,14 +48,17 @@ export interface MatchHandle {
 export function startMatch(opts: {
   room: string;
   role: "create" | "join";
+  netcode?: Netcode;
   canvas: HTMLCanvasElement;
   readInput: () => SimInput;
   onStatus?: (s: MatchStatus) => void;
 }): MatchHandle {
+  const netcode: Netcode = opts.netcode ?? "rollback";
   const youAre: 0 | 1 = opts.role === "create" ? 0 : 1;
+  const lat = Math.max(0, Number(new URLSearchParams(location.search).get("lat")) || 0);
   const status: MatchStatus = {
-    phase: "connecting", connection: "conectando…", youAre, rttMs: null,
-    frame: 0, stalled: false, desync: false, ahead: 0,
+    phase: "connecting", connection: "conectando…", youAre, rttMs: null, netcode,
+    frame: 0, desync: false,
   };
   const emit = () => opts.onStatus?.({ ...status });
   emit();
@@ -50,24 +67,39 @@ export function startMatch(opts: {
   const sig: Signaling = createSignaling(opts.room, opts.role === "create" ? "host" : "guest");
   sig.onError = (info) => { status.phase = "error"; status.connection = info; emit(); };
 
-  let engine: Lockstep | null = null;
+  let engine: Engine | null = null;
   let dc: RTCDataChannel | null = null;
+
+  const rawSend = (m: NetMsg) => {
+    if (dc?.readyState !== "open") return;
+    const data = JSON.stringify(m);
+    if (lat > 0) window.setTimeout(() => { if (dc?.readyState === "open") dc.send(data); }, lat);
+    else dc.send(data);
+  };
 
   const startEngine = (seed: number) => {
     if (engine) return;
-    const sim = new PongSim(seed);
-    engine = new Lockstep({
-      sim, youAre,
-      send: (m) => dc?.readyState === "open" && dc.send(JSON.stringify(m)),
-      readInput: opts.readInput,
-      onStatus: (ls) => {
-        status.frame = ls.frame; status.stalled = ls.stalled;
-        status.desync = ls.desync; status.ahead = ls.ahead;
-        emit();
-      },
-    });
+    const newSim = () => new PongSim(seed);
+    if (netcode === "rollback") {
+      engine = new Rollback({
+        newSim, youAre, send: rawSend, readInput: opts.readInput,
+        onStatus: (r) => {
+          status.frame = r.frame; status.confirmed = r.confirmed;
+          status.predicting = r.predicting; status.rollbacks = r.rollbacks;
+          status.desync = r.desync; emit();
+        },
+      });
+    } else {
+      engine = new Lockstep({
+        sim: newSim(), youAre, send: rawSend, readInput: opts.readInput,
+        onStatus: (ls) => {
+          status.frame = ls.frame; status.stalled = ls.stalled;
+          status.ahead = ls.ahead; status.desync = ls.desync; emit();
+        },
+      });
+    }
     engine.start(opts.canvas);
-    (window as unknown as { __v2?: Lockstep }).__v2 = engine; // hook de verificación
+    (window as unknown as { __v2?: Engine }).__v2 = engine; // hook de verificación
     status.phase = "connected";
     status.connection = "¡en partida!";
     emit();
@@ -85,7 +117,6 @@ export function startMatch(opts: {
     dc.onmessage = (e) => wire(e.data as string);
     if (opts.role === "create") {
       dc.onopen = () => {
-        // El creador fija la semilla compartida y la manda.
         const seed = crypto.getRandomValues(new Uint32Array(1))[0] >>> 0;
         dc!.send(JSON.stringify({ t: "seed", seed } satisfies SeedMsg));
         startEngine(seed);
@@ -100,7 +131,6 @@ export function startMatch(opts: {
     }
   };
 
-  // RTT liviano para mostrar el ping.
   const rttTimer = window.setInterval(async () => {
     if (pc.connectionState !== "connected") return;
     try {
@@ -114,7 +144,6 @@ export function startMatch(opts: {
   }, 1500);
 
   if (opts.role === "create") {
-    // Creador: espera el "join" del otro y recién ahí ofrece (handshake robusto).
     let started = false;
     sig.onMessage = async (msg) => {
       if (msg.join && !started) {
@@ -130,7 +159,6 @@ export function startMatch(opts: {
       }
     };
   } else {
-    // Joiner: anuncia join (con reintentos) y responde la oferta.
     pc.ondatachannel = (e) => bindChannel(e.channel);
     let answered = false;
     sig.onMessage = async (msg) => {

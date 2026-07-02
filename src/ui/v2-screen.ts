@@ -3,9 +3,13 @@
 // inputs → cero ventaja. Es el banco de pruebas del netcode que después usará el
 // core N64. Juego de demo: Pong.
 
-import { startMatch, type MatchStatus, type MatchHandle } from "../v2/peer";
+import { startMatch, type MatchStatus, type MatchHandle, type Netcode } from "../v2/peer";
 import type { SimInput } from "../v2/sim";
 import { el, button, statusPill, toast, copyText, makeRoomCode } from "./components";
+
+// Netcode elegido (rollback por defecto). Se puede fijar por URL (?nc=lockstep).
+let selectedNetcode: Netcode =
+  new URLSearchParams(location.search).get("nc") === "lockstep" ? "lockstep" : "rollback";
 
 function urlRoom(): string | null {
   const r = new URLSearchParams(location.search).get("room");
@@ -14,6 +18,7 @@ function urlRoom(): string | null {
 function inviteLink(room: string): string {
   const u = new URL(location.href);
   u.searchParams.set("room", room);
+  u.searchParams.set("nc", selectedNetcode); // el rival usa el mismo netcode
   u.hash = "v2";
   return u.toString();
 }
@@ -66,7 +71,24 @@ function renderChoice(body: HTMLElement): void {
   );
   join.onclick = () => renderJoin(body);
   choices.append(create, join);
-  body.append(choices);
+
+  // Selector de netcode (para sentir la diferencia).
+  const ncRow = el("div", { class: "row", style: "margin-top:16px;justify-content:center" });
+  const label = el("span", { class: "muted small" });
+  const btn = button("", "ghost", () => {
+    selectedNetcode = selectedNetcode === "rollback" ? "lockstep" : "rollback";
+    refresh();
+  });
+  const refresh = () => {
+    btn.innerHTML = selectedNetcode === "rollback" ? "⚡ Netcode: Rollback" : "🔒 Netcode: Lockstep";
+    label.textContent = selectedNetcode === "rollback"
+      ? "predice y corrige — se siente fluido aun con lag"
+      : "espera al rival — 100% exacto pero se traba con lag";
+  };
+  refresh();
+  ncRow.append(btn, label);
+
+  body.append(choices, ncRow);
 }
 
 function renderJoin(body: HTMLElement): void {
@@ -115,13 +137,15 @@ function startGame(body: HTMLElement, room: string, role: "create" | "join"): vo
 
   const read = paddleInput();
   const handle: MatchHandle = startMatch({
-    room, role, canvas, readInput: read,
+    room, role, netcode: selectedNetcode, canvas, readInput: read,
     onStatus: (s: MatchStatus) => {
       const label = s.phase === "connected"
-        ? (s.desync ? "⚠ DESYNC detectado" : s.stalled ? "esperando al rival…" : "en sync ✓")
+        ? (s.desync ? "⚠ DESYNC" : s.stalled ? "esperando al rival…" : "en sync ✓")
         : s.connection;
       pill.set(s.desync ? "error" : s.phase, label, s.rttMs);
-      readout.textContent = `frame ${s.frame} · buffer ${s.ahead} · P${s.youAre + 1}`;
+      readout.textContent = s.netcode === "rollback"
+        ? `rollback · frame ${s.frame} · predice ${s.predicting ?? 0} · correcc. ${s.rollbacks ?? 0} · P${s.youAre + 1}`
+        : `lockstep · frame ${s.frame} · buffer ${s.ahead ?? 0} · P${s.youAre + 1}`;
     },
   });
 }
