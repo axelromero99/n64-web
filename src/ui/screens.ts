@@ -2,7 +2,7 @@ import { launchLocal } from "../core/emulatorjs";
 import { renderOnline } from "./online-screen";
 import { renderV2 } from "./v2-screen";
 import { controlsHelp } from "./controls-help";
-import { el, button, romDropzone, overlay, toast } from "./components";
+import { el, button, clickable, romDropzone, overlay, toast, touchWarning } from "./components";
 
 export type Screen = "landing" | "local" | "online" | "m0" | "v2";
 
@@ -17,11 +17,10 @@ export function onScreenLeave(fn: () => void): void {
 // ---------- Header + hero ----------
 
 function topbar(go: (s: Screen) => void): HTMLElement {
-  const brand = el("div", { class: "brand-mini" },
+  const brand = clickable(el("div", { class: "brand-mini" },
     el("span", { class: "dot" }),
     el("span", { class: "logo", innerHTML: "N<b>64</b> Web" }),
-  );
-  brand.onclick = () => go("landing");
+  ), () => go("landing"));
   return el("div", { class: "topbar" }, brand,
     el("div", { class: "row" }, button("🎮 Controles", "ghost", controlsHelp)),
   );
@@ -44,32 +43,29 @@ function landing(go: (s: Screen) => void): HTMLElement {
 
   const cards = el("div", { class: "cards" });
 
-  const local = el("div", { class: "card" },
+  const local = clickable(el("div", { class: "card" },
     el("div", { class: "arrow", textContent: "→" }),
     el("div", { class: "card-icon", textContent: "🛋️" }),
     el("h2", { textContent: "Jugar Local" }),
     el("p", { textContent: "2 a 4 jugadores en esta misma compu, con varios mandos. Sin internet, sin vueltas." }),
-  );
-  local.onclick = () => go("local");
+  ), () => go("local"));
 
-  const online = el("div", { class: "card" },
+  const online = clickable(el("div", { class: "card" },
     el("div", { class: "arrow", textContent: "→" }),
     el("div", { class: "card-icon", textContent: "🌐" }),
     el("h2", { innerHTML: 'Jugar Online <span class="badge badge-green">2P · nuevo</span>' }),
     el("p", { textContent: "Creá una sala y pasá el link. Tu amigo se une desde su compu y juegan juntos por internet." }),
-  );
-  online.onclick = () => go("online");
+  ), () => go("online"));
 
   cards.append(local, online);
   wrap.append(cards);
 
-  const v2 = el("div", { class: "card", style: "margin-top:18px" },
+  const v2 = clickable(el("div", { class: "card", style: "margin-top:18px" },
     el("div", { class: "arrow", textContent: "→" }),
     el("div", { class: "card-icon", textContent: "🧪" }),
     el("h2", { innerHTML: 'Netcode justo <span class="badge">v2 · rollback</span>' }),
     el("p", { textContent: "Demo del online competitivo: ambos corren la misma simulación e intercambian solo inputs, con lockstep y rollback deterministas. Cero ventaja, verificado. El motor que después manejará N64." }),
-  );
-  v2.onclick = () => go("v2");
+  ), () => go("v2"));
   wrap.append(v2);
   return wrap;
 }
@@ -83,6 +79,8 @@ function local(go: (s: Screen) => void): HTMLElement {
     button("← Volver", "ghost", () => go("landing")),
   ));
   panel.append(el("p", { class: "sub", textContent: "Cargá tu ROM y jugá. Enchufá hasta 4 mandos para 2-4 jugadores en esta compu." }));
+  const warn = touchWarning();
+  if (warn) panel.append(warn);
 
   const holder = el("div");
   panel.append(holder);

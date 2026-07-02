@@ -72,6 +72,7 @@ a:hover { text-decoration: underline; }
   background: linear-gradient(140deg, transparent, transparent); opacity: 0; transition: opacity .15s;
 }
 .card:hover { transform: translateY(-4px); border-color: var(--border-2); box-shadow: var(--shadow); }
+.card:focus-visible, .choice:focus-visible, .brand-mini:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .card .card-icon { font-size: 34px; margin-bottom: 12px; }
 .card h2 { margin: 0 0 6px; font-size: 21px; }
 .card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }

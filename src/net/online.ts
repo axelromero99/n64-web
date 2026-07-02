@@ -521,6 +521,11 @@ export async function startGuest(opts: {
     stopRtt = pollRtt(pc, (ms) => { status.rttMs = ms; emit(); });
   };
 
+  // Cerrar la pestaña con la partida andando deja al host colgado: confirmar.
+  // (Solo el guest: el host usa recargas propias para cerrar/limpiar la sala.)
+  const warnUnload = (e: BeforeUnloadEvent) => { if (status.phase === "connected") e.preventDefault(); };
+  window.addEventListener("beforeunload", warnUnload);
+
   // Serializado: procesa un mensaje por vez (evita addIceCandidate durante un
   // setRemoteDescription pendiente, que perdía candidatos en silencio).
   sig.onMessage = serializeMessages(async (msg) => {
@@ -545,6 +550,7 @@ export async function startGuest(opts: {
   return {
     stop: () => {
       stopped = true;
+      window.removeEventListener("beforeunload", warnUnload);
       window.clearInterval(joinTimer);
       stopRtt?.();
       detach();

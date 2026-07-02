@@ -1,6 +1,6 @@
 import { startHost, startGuest, type NetStatus, type GuestHandle, type HostHandle } from "../net/online";
 import { KEYBOARD_PRESETS } from "../input/n64";
-import { el, button, statusPill, romDropzone, overlay, toast, copyText, makeRoomCode, roomFromUrl, inviteLink } from "./components";
+import { el, button, clickable, statusPill, romDropzone, overlay, toast, copyText, makeRoomCode, roomFromUrl, inviteLink, touchWarning } from "./components";
 import { controlsHelp } from "./controls-help";
 import { onScreenLeave } from "./screens";
 
@@ -11,6 +11,8 @@ export function renderOnline(host: HTMLElement, goBack: () => void): void {
     button("← Volver", "ghost", goBack),
   );
   panel.append(head, el("p", { class: "sub", textContent: "Un jugador crea la sala y corre el juego; el otro se une por código o link. Funciona entre computadoras distintas." }));
+  const warn = touchWarning();
+  if (warn) panel.append(warn);
 
   const body = el("div");
   panel.append(body);
@@ -34,19 +36,17 @@ function renderChoice(body: HTMLElement): void {
   body.replaceChildren();
   const choices = el("div", { class: "choices" });
 
-  const hostTile = el("div", { class: "choice" },
+  const hostTile = clickable(el("div", { class: "choice" },
     el("div", { class: "ci", textContent: "🎮" }),
     el("h3", { textContent: "Crear una sala" }),
     el("p", { textContent: "Vos corrés el juego (Jugador 1) e invitás a un amigo con un código o link." }),
-  );
-  hostTile.onclick = () => renderHost(body);
+  ), () => renderHost(body));
 
-  const guestTile = el("div", { class: "choice" },
+  const guestTile = clickable(el("div", { class: "choice" },
     el("div", { class: "ci", textContent: "🔗" }),
     el("h3", { textContent: "Unirse a una sala" }),
     el("p", { textContent: "Entrás con el código que te pasaron y jugás como Jugador 2." }),
-  );
-  guestTile.onclick = () => renderJoin(body, "");
+  ), () => renderJoin(body, ""));
 
   choices.append(hostTile, guestTile);
   body.append(choices);
@@ -146,12 +146,15 @@ function launchHost(body: HTMLElement, rom: File): void {
 function renderJoin(body: HTMLElement, preCode: string): void {
   body.replaceChildren();
   const input = el("input", { class: "field field-code", value: preCode, maxLength: 6, placeholder: "CÓDIGO" }) as HTMLInputElement;
+  input.setAttribute("aria-label", "Código de sala");
   input.oninput = () => (input.value = input.value.toUpperCase());
-  const joinBtn = button("Unirse ▶", "primary", () => {
+  const join = () => {
     const code = input.value.trim().toUpperCase();
     if (code.length < 4) { toast("Ingresá el código completo"); return; }
     connectGuest(body, code);
-  });
+  };
+  input.onkeydown = (e) => { if (e.key === "Enter") join(); };
+  const joinBtn = button("Unirse ▶", "primary", join);
 
   const form = el("div", { class: "row", style: "margin-bottom:14px" },
     el("span", { class: "muted", textContent: "Código de sala:" }), input, joinBtn,
@@ -161,6 +164,7 @@ function renderJoin(body: HTMLElement, preCode: string): void {
 
   body.append(el("p", { class: "sub", textContent: "Entrá con el código que te compartieron. Vas a ver el juego del host y jugar como Jugador 2." }), form, hint, back);
   if (preCode) connectGuest(body, preCode);
+  else input.focus();
 }
 
 function connectGuest(body: HTMLElement, code: string): void {

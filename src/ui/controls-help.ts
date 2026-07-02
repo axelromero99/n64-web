@@ -13,9 +13,10 @@ const MAP: Array<[string, string]> = [
   ["I J K L", "Botones C (cámara)"],
 ];
 
+let closeCurrent: (() => void) | null = null;
+
 export function controlsHelp(): void {
-  const existing = document.querySelector(".modal-backdrop");
-  if (existing) { existing.remove(); return; }
+  if (closeCurrent) { closeCurrent(); return; } // toggle
 
   const grid = el("div", { class: "controls-grid" });
   for (const [key, action] of MAP) {
@@ -25,19 +26,31 @@ export function controlsHelp(): void {
     ));
   }
 
+  const closeBtn = el("button", { class: "btn btn-ghost", textContent: "✕", onclick: close });
+  closeBtn.setAttribute("aria-label", "Cerrar");
   const card = el("div", { class: "modal-card" },
     el("div", { class: "section-head" },
       el("h2", { textContent: "🎮 Controles" }),
-      el("button", { class: "btn btn-ghost", textContent: "✕", onclick: close }),
+      closeBtn,
     ),
     el("p", { class: "sub", textContent: "Teclado por defecto. En modo Local podés reasignar todo desde el menú ⚙ de EmulatorJS. Los mandos USB (Xbox/PS) se detectan automáticamente." }),
     grid,
     el("div", { class: "callout", style: "margin-top:16px", innerHTML: "En <b>Online</b>, cada jugador usa su propio teclado/mando en su compu." }),
   );
+  card.setAttribute("role", "dialog");
+  card.setAttribute("aria-label", "Controles");
 
   const backdrop = el("div", { class: "modal-backdrop" }, card);
   backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
   document.body.append(backdrop);
+  closeBtn.focus();
+  closeCurrent = close;
 
-  function close() { document.querySelector(".modal-backdrop")?.remove(); }
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    backdrop.remove();
+    closeCurrent = null;
+  }
 }

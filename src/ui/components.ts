@@ -14,6 +14,30 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/**
+ * Hace accesible un elemento clickeable que no es <button>: rol de botón,
+ * foco con Tab y activación con Enter/Espacio.
+ */
+export function clickable<T extends HTMLElement>(node: T, onActivate: () => void): T {
+  node.onclick = onActivate;
+  node.setAttribute("role", "button");
+  node.tabIndex = 0;
+  node.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); }
+  });
+  return node;
+}
+
+/** Aviso para pantallas táctiles: se juega con teclado o mando físico. */
+export function touchWarning(): HTMLElement | null {
+  if (!window.matchMedia?.("(pointer: coarse)").matches) return null;
+  return el("div", {
+    class: "callout warn",
+    style: "margin-bottom:14px",
+    textContent: "📱 Estás en una pantalla táctil: para jugar vas a necesitar un teclado o un mando conectado (todavía no hay controles táctiles).",
+  });
+}
+
 export type BtnVariant = "primary" | "ghost" | "accent" | "danger";
 
 export function button(label: string, variant: BtnVariant = "primary", onClick?: () => void): HTMLButtonElement {

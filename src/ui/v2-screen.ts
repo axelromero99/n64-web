@@ -5,7 +5,7 @@
 
 import { startMatch, type MatchStatus, type MatchHandle, type Netcode } from "../v2/peer";
 import type { SimInput } from "../v2/sim";
-import { el, button, statusPill, toast, copyText, makeRoomCode, roomFromUrl, inviteLink } from "./components";
+import { el, button, clickable, statusPill, toast, copyText, makeRoomCode, roomFromUrl, inviteLink, touchWarning } from "./components";
 import { onScreenLeave } from "./screens";
 
 // Netcode elegido (rollback por defecto). Se puede fijar por URL (?nc=lockstep).
@@ -44,6 +44,8 @@ export function renderV2(host: HTMLElement, goBack: () => void): void {
     button("← Volver", "ghost", goBack),
   ));
   panel.append(el("p", { class: "sub", textContent: "Demo del netcode competitivo: ambos corren la MISMA simulación desde la misma semilla e intercambian solo inputs (lockstep determinista). Sin ventaja para nadie. Es el motor que después manejará N64. Juego de prueba: Pong. Movete con ↑ ↓ (o W/S)." }));
+  const warn = touchWarning();
+  if (warn) panel.append(warn);
 
   const body = el("div");
   panel.append(body);
@@ -64,18 +66,16 @@ export function renderV2(host: HTMLElement, goBack: () => void): void {
 function renderChoice(body: HTMLElement): void {
   body.replaceChildren();
   const choices = el("div", { class: "choices" });
-  const create = el("div", { class: "choice" },
+  const create = clickable(el("div", { class: "choice" },
     el("div", { class: "ci", textContent: "🎾" }),
     el("h3", { textContent: "Crear partida" }),
     el("p", { textContent: "Generás la sala y la semilla. Pasás el link y arrancan iguales." }),
-  );
-  create.onclick = () => startGame(body, makeRoomCode(), "create");
-  const join = el("div", { class: "choice" },
+  ), () => startGame(body, makeRoomCode(), "create"));
+  const join = clickable(el("div", { class: "choice" },
     el("div", { class: "ci", textContent: "🔗" }),
     el("h3", { textContent: "Unirse" }),
     el("p", { textContent: "Entrás con el código que te pasaron." }),
-  );
-  join.onclick = () => renderJoin(body);
+  ), () => renderJoin(body));
   choices.append(create, join);
 
   // Selector de netcode (para sentir la diferencia).
@@ -100,16 +100,20 @@ function renderChoice(body: HTMLElement): void {
 function renderJoin(body: HTMLElement): void {
   body.replaceChildren();
   const input = el("input", { class: "field field-code", maxLength: 6, placeholder: "CÓDIGO" }) as HTMLInputElement;
+  input.setAttribute("aria-label", "Código de partida");
   input.oninput = () => (input.value = input.value.toUpperCase());
-  const go = button("Unirse ▶", "primary", () => {
+  const join = () => {
     const code = input.value.trim().toUpperCase();
     if (code.length < 4) { toast("Ingresá el código completo"); return; }
     startGame(body, code, "join");
-  });
+  };
+  input.onkeydown = (e) => { if (e.key === "Enter") join(); };
+  const go = button("Unirse ▶", "primary", join);
   body.append(
     el("div", { class: "row", style: "margin-bottom:14px" }, el("span", { class: "muted", textContent: "Código:" }), input, go),
     el("div", { class: "back-link" }, button("← Volver", "ghost", () => renderChoice(body))),
   );
+  input.focus();
 }
 
 function startGame(body: HTMLElement, room: string, role: "create" | "join"): void {
