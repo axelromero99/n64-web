@@ -14,7 +14,7 @@
 import { launchLocal } from "../core/emulatorjs";
 import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1, EMPTY_INPUT } from "../input/n64";
 import { createSignaling, type Signaling } from "./signaling";
-import { ICE_CONFIG, DEBUG_HOOKS, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "./rtc";
+import { DEBUG_HOOKS, iceConfig, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "./rtc";
 
 // Reordena los codecs de video para preferir los de mejor calidad (VP9/H264)
 // sobre el VP8 por defecto. Debe llamarse ANTES de createOffer.
@@ -256,6 +256,7 @@ export async function startHost(opts: {
   const sig: Signaling = createSignaling(opts.room, "host");
   sig.onError = (info) => { status.connection = info; status.phase = "error"; emit(); };
   let pc: RTCPeerConnection | null = null;
+  let creatingPeer = false;
   let candidates: RemoteCandidates | null = null;
   let stopRtt: (() => void) | null = null;
   let stopped = false;
@@ -280,13 +281,19 @@ export async function startHost(opts: {
   // handshake funciona sin importar el orden (crear sala antes o después de unirse)
   // y los candidatos ICE se emiten con el guest ya escuchando.
   async function startPeerForGuest(): Promise<void> {
-    if (pc || stopped) return; // ya hay una sesión en curso: ignorar joins repetidos
+    if (pc || creatingPeer || stopped) return; // ya hay una sesión en curso: ignorar joins repetidos
+    creatingPeer = true;
     status.connection = "jugador 2 detectado — conectando…";
     status.phase = "connecting";
     emit();
 
+    // TURN (si está configurado) se pide por sesión: credenciales efímeras.
+    const rtcConfig = await iceConfig();
+    if (pc || stopped) { creatingPeer = false; return; }
+    creatingPeer = false;
+
     const stream = mirror.captureStream(30);
-    pc = new RTCPeerConnection(ICE_CONFIG);
+    pc = new RTCPeerConnection(rtcConfig);
     const thisPc = pc;
     candidates = new RemoteCandidates(pc);
     for (const track of stream.getVideoTracks()) {
@@ -458,12 +465,16 @@ export async function startGuest(opts: {
   };
 
   // Crea una sesión WebRTC nueva (la primera, o una limpia tras una caída).
-  const newPeer = () => {
+  const newPeer = async () => {
     stopRtt?.(); stopRtt = null;
     try { pc?.close(); } catch { /* ya cerrado */ }
+    pc = null;
     answered = false;
     dc = null;
-    pc = new RTCPeerConnection(ICE_CONFIG);
+    // TURN (si está configurado) se pide por sesión: credenciales efímeras.
+    const rtcConfig = await iceConfig();
+    if (stopped) return;
+    pc = new RTCPeerConnection(rtcConfig);
     const thisPc = pc;
     candidates = new RemoteCandidates(pc);
     if (DEBUG_HOOKS) (window as unknown as { __n64guestPc?: RTCPeerConnection }).__n64guestPc = pc;
@@ -514,8 +525,7 @@ export async function startGuest(opts: {
         status.rttMs = null;
         status.videoReady = false;
         emit();
-        newPeer();
-        startJoining();
+        void newPeer().then(() => startJoining());
       },
     });
     stopRtt = pollRtt(pc, (ms) => { status.rttMs = ms; emit(); });
@@ -544,7 +554,7 @@ export async function startGuest(opts: {
     }
   });
 
-  newPeer();
+  await newPeer();
   startJoining();
 
   return {

@@ -23,6 +23,11 @@ check(r400.status === 400, `room inválida → 400 (fue ${r400.status})`);
 const r426 = await fetch(`${HTTP}/signal?room=TESTAB`);
 check(r426.status === 426, `sin Upgrade → 426 (fue ${r426.status})`);
 
+// 2b) /turn sin secrets configurados → 204 (el cliente degrada a STUN);
+//     con secrets → 200 con iceServers.
+const rturn = await fetch(`${HTTP}/turn`);
+check(rturn.status === 204 || rturn.status === 200, `/turn → 204 (sin TURN) o 200 (fue ${rturn.status})`);
+
 // 3) Relay normal entre 2 peers
 const url = `${WS}/signal?room=TESTAB`;
 const openWs = (u) => new Promise((res, rej) => {

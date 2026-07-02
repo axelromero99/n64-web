@@ -99,6 +99,30 @@ export default {
       const id = env.SIGNAL_ROOM.idFromName(room); // mismo código de sala → mismo DO
       return env.SIGNAL_ROOM.get(id).fetch(request);
     }
+    // /turn → credenciales TURN efímeras (OPCIONAL, ver DEPLOY.md). TURN es el
+    // relay de respaldo para NAT muy cerrados (~5-10 % de pares no conectan
+    // P2P directo). Si los secrets no están configurados, 204 y el cliente
+    // sigue con STUN solo — nada se rompe.
+    if (url.pathname === "/turn") {
+      if (!allowedOrigin(request, url)) return new Response("Origin no permitido", { status: 403 });
+      if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return new Response(null, { status: 204 });
+      try {
+        const resp = await fetch(
+          `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${env.TURN_API_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ ttl: 600 }), // credenciales de 10 min, por sesión
+          },
+        );
+        if (!resp.ok) return new Response(null, { status: 204 }); // degradar a STUN
+        return new Response(await resp.text(), {
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      } catch {
+        return new Response(null, { status: 204 });
+      }
+    }
     // Cualquier otra ruta → servir el frontend estático (dist/).
     return env.ASSETS.fetch(request);
   },

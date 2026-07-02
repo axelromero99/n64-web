@@ -6,6 +6,28 @@ export const ICE_CONFIG: RTCConfiguration = {
 };
 
 /**
+ * Config ICE completa: STUN siempre y, si el servidor tiene TURN configurado
+ * (opcional — ver la sección TURN de DEPLOY.md), credenciales efímeras de
+ * Cloudflare como relay de respaldo para NAT muy cerrados. Cualquier fallo o
+ * ausencia (dev, sin secrets, timeout) degrada silenciosamente a STUN solo.
+ */
+export async function iceConfig(): Promise<RTCConfiguration> {
+  try {
+    const ctl = new AbortController();
+    const t = window.setTimeout(() => ctl.abort(), 2000);
+    const r = await fetch("/turn", { signal: ctl.signal });
+    window.clearTimeout(t);
+    if (r.status !== 200) return ICE_CONFIG;
+    const data = (await r.json()) as { iceServers?: RTCIceServer | RTCIceServer[] };
+    const turn = Array.isArray(data.iceServers) ? data.iceServers : data.iceServers ? [data.iceServers] : [];
+    if (turn.length === 0) return ICE_CONFIG;
+    return { iceServers: [...(ICE_CONFIG.iceServers ?? []), ...turn] };
+  } catch {
+    return ICE_CONFIG;
+  }
+}
+
+/**
  * Hooks de debug en window (__n64net, __v2, __n64hostPc, …): solo en dev o con
  * ?debug=1 explícito. En producción normal no se exponen — los scripts de
  * verificación contra prod pasan ?debug=1 en la URL.

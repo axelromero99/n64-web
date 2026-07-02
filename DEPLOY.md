@@ -57,4 +57,29 @@ Sí. En el plan gratis de Cloudflare Workers entra todo esto:
   así que ni se cuenta.
 
 Para NAT muy cerrados (raro), se puede sumar un TURN de Cloudflare (1 TB/mes gratis);
-ver `docs/signaling-cloudflare.md`. No hace falta para empezar.
+ver la sección siguiente. No hace falta para empezar.
+
+---
+
+## TURN opcional (si a alguien "no le conecta nunca")
+
+La conexión del juego es directa entre los dos navegadores (P2P). En un ~5-10 %
+de los casos (routers muy restrictivos, redes de empresa, algún 4G) la conexión
+directa es imposible y hace falta un **relay** (TURN). **El código ya está
+listo**: solo hay que darle las credenciales. Sin ellas, todo funciona igual
+que siempre (solo STUN).
+
+1. En el dashboard de Cloudflare: **Realtime → TURN Server → Create**.
+   Te da un **Turn Token ID** y un **API Token**.
+2. En la carpeta del proyecto, cargá los dos secretos (una sola vez):
+
+   ```bash
+   npx wrangler secret put TURN_KEY_ID      # pegá el Turn Token ID
+   npx wrangler secret put TURN_API_TOKEN   # pegá el API Token
+   ```
+
+3. `npm run deploy` de nuevo. Listo.
+
+Desde ahí, el cliente pide credenciales efímeras (10 min) a `/turn` al armar
+cada conexión y las usa como respaldo. Si algún día borrás los secretos, vuelve
+solo a STUN sin romper nada.

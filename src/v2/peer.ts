@@ -14,7 +14,7 @@
 // re-sincronizar, y para la demo no vale la complejidad.
 
 import { createSignaling, type Signaling } from "../net/signaling";
-import { ICE_CONFIG, DEBUG_HOOKS, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "../net/rtc";
+import { ICE_CONFIG, DEBUG_HOOKS, iceConfig, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "../net/rtc";
 import { Lockstep, type NetMsg } from "./lockstep";
 import { Rollback } from "./rollback";
 import { PongSim, type SimInput } from "./sim";
@@ -69,6 +69,12 @@ export function startMatch(opts: {
   emit();
 
   const pc = new RTCPeerConnection(ICE_CONFIG);
+  // TURN (si el servidor lo tiene configurado) se suma en cuanto llega: acá la
+  // negociación arranca recién con el join/offer, así que casi siempre llega
+  // antes; si no, STUN alcanza para la gran mayoría de pares.
+  void iceConfig().then((cfg) => {
+    try { pc.setConfiguration(cfg); } catch { /* ya negociando: seguir con STUN */ }
+  });
   const candidates = new RemoteCandidates(pc);
   const sig: Signaling = createSignaling(opts.room, opts.role === "create" ? "host" : "guest");
   sig.onError = (info) => { status.phase = "error"; status.connection = info; emit(); };

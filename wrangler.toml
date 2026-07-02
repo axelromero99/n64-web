@@ -15,6 +15,11 @@ binding = "ASSETS"
 name = "SIGNAL_ROOM"
 class_name = "SignalRoom"
 
+# TURN opcional (relay para NAT muy cerrados) — NO va acá: se carga como
+# secretos con `npx wrangler secret put TURN_KEY_ID` y
+# `npx wrangler secret put TURN_API_TOKEN`. Ver la sección TURN de DEPLOY.md.
+# Sin ellos, /turn responde 204 y el cliente sigue con STUN solo.
+
 # SQLite-backed DO: requerido para entrar en el plan GRATIS de Workers.
 [[migrations]]
 tag = "v1"
