@@ -1,0 +1,122 @@
+// Helpers de UI reutilizables. Mantienen el estilo consistente sin un framework.
+
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  props: Partial<Omit<HTMLElementTagNameMap[K], "style">> & { class?: string; style?: string } = {},
+  ...children: (Node | string)[]
+): HTMLElementTagNameMap[K] {
+  const { class: className, style, ...rest } = props;
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (style) node.style.cssText = style;
+  Object.assign(node, rest);
+  for (const c of children) node.append(c);
+  return node;
+}
+
+export type BtnVariant = "primary" | "ghost" | "accent" | "danger";
+
+export function button(label: string, variant: BtnVariant = "primary", onClick?: () => void): HTMLButtonElement {
+  const b = el("button", { class: `btn btn-${variant}`, type: "button" });
+  b.innerHTML = label;
+  if (onClick) b.onclick = onClick;
+  return b;
+}
+
+export function spinner(): HTMLElement {
+  return el("span", { class: "spinner" });
+}
+
+/** Pill de estado con color según la fase. */
+export function statusPill(): { root: HTMLElement; set: (phase: string, text: string, rtt?: number | null) => void } {
+  const dot = el("span", { class: "pill-dot" });
+  const label = el("span", { class: "pill-label" });
+  const rttEl = el("span", { class: "pill-rtt" });
+  const root = el("div", { class: "pill" }, dot, label, rttEl);
+  const set = (phase: string, text: string, rtt?: number | null) => {
+    root.className = `pill pill-${phase}`;
+    label.textContent = text;
+    if (rtt != null) {
+      rttEl.textContent = `${rtt} ms`;
+      rttEl.className = "pill-rtt " + (rtt < 60 ? "rtt-good" : rtt < 120 ? "rtt-ok" : "rtt-bad");
+    } else {
+      rttEl.textContent = "";
+    }
+  };
+  return { root, set };
+}
+
+/** Overlay de carga sobre un contenedor relativo. */
+export function overlay(text: string): { root: HTMLElement; setText: (t: string) => void; remove: () => void } {
+  const msg = el("div", { class: "overlay-text", textContent: text });
+  const root = el("div", { class: "overlay" }, el("div", { class: "overlay-spin" }), msg);
+  return { root, setText: (t) => (msg.textContent = t), remove: () => root.remove() };
+}
+
+let toastTimer = 0;
+export function toast(message: string): void {
+  let t = document.querySelector<HTMLElement>(".toast");
+  if (!t) {
+    t = el("div", { class: "toast" });
+    document.body.append(t);
+  }
+  t.textContent = message;
+  t.classList.add("toast-show");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => t!.classList.remove("toast-show"), 2200);
+}
+
+/** Zona para soltar/elegir un archivo de ROM. */
+export function romDropzone(onFile: (f: File) => void, hint = "Arrastrá tu ROM acá o hacé click"): HTMLElement {
+  const input = el("input", { type: "file", accept: ".z64,.n64,.v64,.zip", class: "hidden-file" });
+  const zone = el(
+    "label",
+    { class: "dropzone" },
+    el("div", { class: "dropzone-icon", textContent: "🎮" }),
+    el("div", { class: "dropzone-hint", textContent: hint }),
+    el("div", { class: "dropzone-sub", textContent: ".z64 · .n64 · .v64 — se queda en tu navegador, no se sube" }),
+    input,
+  );
+  input.onchange = () => { const f = input.files?.[0]; if (f) onFile(f); };
+  const stop = (e: Event) => { e.preventDefault(); zone.classList.add("dropzone-over"); };
+  zone.addEventListener("dragover", stop);
+  zone.addEventListener("dragleave", () => zone.classList.remove("dropzone-over"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("dropzone-over");
+    const f = (e as DragEvent).dataTransfer?.files?.[0];
+    if (f) onFile(f);
+  });
+  return zone;
+}
+
+/** Copia texto al portapapeles con fallback. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = el("textarea", { value: text });
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Código de sala corto y legible (sin caracteres ambiguos). */
+export function makeRoomCode(len = 5): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // sin O/0/I/1/L
+  const rnd = new Uint32Array(len);
+  crypto.getRandomValues(rnd);
+  let code = "";
+  for (let i = 0; i < len; i++) code += alphabet[rnd[i] % alphabet.length];
+  return code;
+}

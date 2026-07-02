@@ -1,0 +1,21 @@
+# Deploy TODO-EN-UNO: un solo Worker sirve el frontend (dist/) Y la señalización
+# WebRTC (/signal). Al ser el mismo origen, el cliente usa /signal automáticamente
+# sin configurar nada. Un solo comando: `npx wrangler deploy`.
+name = "n64-web"
+main = "worker/signaling.js"
+compatibility_date = "2026-01-01"
+
+# Frontend estático (lo que genera `npm run build`).
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# Durable Object: una "sala" de señalización por código.
+[[durable_objects.bindings]]
+name = "SIGNAL_ROOM"
+class_name = "SignalRoom"
+
+# SQLite-backed DO: requerido para entrar en el plan GRATIS de Workers.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRoom"]

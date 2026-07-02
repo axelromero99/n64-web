@@ -1,0 +1,9 @@
+Las ROMs NO se incluyen en el proyecto (por temas legales) y NO se suben a
+ningun servidor: en esta app cada jugador carga su propia ROM desde su disco
+y se queda en su navegador (nunca se envia a la nube).
+
+Por eso esta carpeta esta vacia. No hace falta poner nada aqui para jugar:
+usa el boton "Cargar ROM" dentro de la app.
+
+Esta carpeta queda como punto de montaje por si en el futuro quieres servir
+alguna ROM de dominio publico / homebrew (ej: demos libres de N64).

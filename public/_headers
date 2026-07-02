@@ -1,0 +1,12 @@
+# Cabeceras que Cloudflare Pages aplica al sitio desplegado.
+#
+# COOP + COEP habilitan "cross-origin isolation", requisito para usar
+# SharedArrayBuffer (hilos/SIMD del core WASM). Hara falta cuando integremos
+# el core determinista + rollback (M2/M3).
+#
+# Usamos COEP=credentialless (no "require-corp") para que EmulatorJS pueda
+# cargar su core desde su CDN sin que el navegador lo bloquee. Si algun dia
+# self-hospedamos el core, se puede endurecer a require-corp.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.local
+
+# Cloudflare Wrangler (estado local del deploy)
+.wrangler/
+.dev.vars
+
+# ROMs: nunca versionar (legal). El usuario las carga desde su disco.
+public/roms/*
+!public/roms/PONER-ROMS-AQUI.txt
+*.z64
+*.n64
+*.v64
