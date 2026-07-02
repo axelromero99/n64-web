@@ -1,15 +1,16 @@
 import { el } from "./components";
 
-// Mapeo de teclado por defecto (coincide con DEFAULT_KEYBOARD_P1 en input/n64.ts).
+// Esquema unificado: idéntico para host (P1) y guest (P2). Ver core/emulatorjs.ts
+// (N64_CONTROLS_P0) e input/n64.ts (DEFAULT_KEYBOARD_P1).
 const MAP: Array<[string, string]> = [
-  ["← ↑ ↓ →", "Stick analógico"],
-  ["X", "A"],
-  ["C", "B"],
-  ["Z", "Z (gatillo)"],
-  ["Q", "L"],
-  ["E", "R"],
+  ["← ↑ ↓ →", "Volante (stick)"],
+  ["X", "Acelerar (A)"],
+  ["Z", "Frenar (B)"],
+  ["Espacio", "Derrape / salto (R)"],
+  ["C", "Z (gatillo)"],
+  ["A", "L"],
   ["Enter", "Start"],
-  ["I / K / J / L", "Botones C"],
+  ["I J K L", "Botones C (cámara)"],
 ];
 
 export function controlsHelp(): void {

@@ -385,8 +385,14 @@ export async function startGuest(opts: {
 }
 
 // Captura de teclado del guest -> N64Input, con callback en cada cambio.
+// Polaridad del stick (consistente con el host N64_CONTROLS_P0):
+//   arriba = Y negativo (índice 19) · abajo = Y positivo (índice 18)
+//   derecha = X positivo (índice 16) · izquierda = X negativo (índice 17)
 function attachKeyboard(map: KeyboardMap, onChange: (input: N64Input) => void): () => void {
   const state: N64Input = { buttons: 0, stickX: 0, stickY: 0 };
+  const isMapped = (code: string) =>
+    code in map.buttons || code === map.axis.up || code === map.axis.down ||
+    code === map.axis.left || code === map.axis.right;
   const set = (code: string, down: boolean) => {
     let changed = false;
     const btn = map.buttons[code];
@@ -394,15 +400,17 @@ function attachKeyboard(map: KeyboardMap, onChange: (input: N64Input) => void): 
       const next = down ? state.buttons | btn : state.buttons & ~btn;
       if (next !== state.buttons) { state.buttons = next; changed = true; }
     }
-    const v = down ? 127 : 0;
-    if (code === map.axis.left && state.stickX !== (down ? -127 : 0)) { state.stickX = down ? -127 : 0; changed = true; }
-    else if (code === map.axis.right && state.stickX !== v) { state.stickX = v; changed = true; }
-    else if (code === map.axis.up && state.stickY !== v) { state.stickY = v; changed = true; }
-    else if (code === map.axis.down && state.stickY !== (down ? -127 : 0)) { state.stickY = down ? -127 : 0; changed = true; }
+    const setAxis = (axis: "stickX" | "stickY", val: number) => {
+      if (state[axis] !== val) { state[axis] = val; changed = true; }
+    };
+    if (code === map.axis.left) setAxis("stickX", down ? -127 : 0);
+    else if (code === map.axis.right) setAxis("stickX", down ? 127 : 0);
+    else if (code === map.axis.up) setAxis("stickY", down ? -127 : 0);
+    else if (code === map.axis.down) setAxis("stickY", down ? 127 : 0);
     if (changed) onChange({ ...state });
   };
-  const kd = (e: KeyboardEvent) => set(e.code, true);
-  const ku = (e: KeyboardEvent) => set(e.code, false);
+  const kd = (e: KeyboardEvent) => { if (isMapped(e.code)) e.preventDefault(); set(e.code, true); };
+  const ku = (e: KeyboardEvent) => { if (isMapped(e.code)) e.preventDefault(); set(e.code, false); };
   window.addEventListener("keydown", kd);
   window.addEventListener("keyup", ku);
   onChange({ ...state });

@@ -66,15 +66,18 @@ export interface KeyboardMap {
   };
 }
 
-/** Jugador 1 por defecto: flechas + teclas de la mano derecha. */
+// Esquema ESTÁNDAR — idéntico al del host (ver core/emulatorjs.ts N64_CONTROLS_P0),
+// así ambos jugadores usan exactamente los mismos controles.
+//   flechas = volante · X=acelerar(A) · Z=frenar(B) · Espacio=derrape(R) · C=Z
+//   A=L · Enter=Start · I/J/K/L = botones C
 export const DEFAULT_KEYBOARD_P1: KeyboardMap = {
   buttons: {
     KeyX: N64Button.A,
-    KeyC: N64Button.B,
-    KeyZ: N64Button.Z,
+    KeyZ: N64Button.B,
+    Space: N64Button.R,
+    KeyC: N64Button.Z,
+    KeyA: N64Button.L,
     Enter: N64Button.Start,
-    KeyQ: N64Button.L,
-    KeyE: N64Button.R,
     KeyI: N64Button.CUp,
     KeyK: N64Button.CDown,
     KeyJ: N64Button.CLeft,
@@ -83,15 +86,15 @@ export const DEFAULT_KEYBOARD_P1: KeyboardMap = {
   axis: { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" },
 };
 
-/** Preset alternativo: WASD como volante, mano derecha para acciones. */
+/** Preset alternativo: WASD como volante (para zurdos o teclados chicos). */
 export const KEYBOARD_WASD: KeyboardMap = {
   buttons: {
     KeyL: N64Button.A, // acelerar
-    KeyK: N64Button.B, // frenar / objeto
+    KeyK: N64Button.B, // frenar
+    Space: N64Button.R, // derrape
     KeyJ: N64Button.Z,
-    Enter: N64Button.Start,
     KeyU: N64Button.L,
-    KeyO: N64Button.R,
+    Enter: N64Button.Start,
     ArrowUp: N64Button.CUp,
     ArrowDown: N64Button.CDown,
     ArrowLeft: N64Button.CLeft,
@@ -100,24 +103,7 @@ export const KEYBOARD_WASD: KeyboardMap = {
   axis: { up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD" },
 };
 
-/** Preset "arcade": flechas volante, Espacio acelera, mano izquierda acciones. */
-export const KEYBOARD_ARCADE: KeyboardMap = {
-  buttons: {
-    Space: N64Button.A, // acelerar
-    ShiftLeft: N64Button.B, // frenar / objeto
-    KeyZ: N64Button.Z,
-    Enter: N64Button.Start,
-    KeyA: N64Button.L,
-    KeyS: N64Button.R,
-    KeyI: N64Button.CUp,
-    KeyK: N64Button.CDown,
-    KeyJ: N64Button.CLeft,
-    KeyL: N64Button.CRight,
-  },
-  axis: { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" },
-};
-
-/** Presets seleccionables en la UI (modo online, jugador 2). */
+/** Presets seleccionables en la UI (jugador 2 online). El primero = estándar (= host). */
 export interface Preset {
   id: string;
   name: string;
@@ -125,9 +111,18 @@ export interface Preset {
   map: KeyboardMap;
 }
 export const KEYBOARD_PRESETS: Preset[] = [
-  { id: "arrows", name: "Flechas + X/C", hint: "← ↑ ↓ → volante · X acelera · C frena/objeto · Enter Start", map: DEFAULT_KEYBOARD_P1 },
-  { id: "wasd", name: "WASD + L/K", hint: "W A S D volante · L acelera · K frena/objeto · Enter Start", map: KEYBOARD_WASD },
-  { id: "arcade", name: "Flechas + Espacio", hint: "← ↑ ↓ → volante · Espacio acelera · Shift frena · Enter Start", map: KEYBOARD_ARCADE },
+  {
+    id: "std",
+    name: "Estándar (flechas)",
+    hint: "← ↑ ↓ → volante · X acelera · Z frena · Espacio derrape · C = Z · A = L · Enter Start",
+    map: DEFAULT_KEYBOARD_P1,
+  },
+  {
+    id: "wasd",
+    name: "WASD",
+    hint: "W A S D volante · L acelera · K frena · Espacio derrape · Enter Start",
+    map: KEYBOARD_WASD,
+  },
 ];
 
 /**
