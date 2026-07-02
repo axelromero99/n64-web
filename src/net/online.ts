@@ -7,9 +7,11 @@
 //   GUEST = jugador 2. No corre emulador: muestra el video que recibe y manda su
 //           input (teclado) por el datachannel.
 //
-// Esto NO es rollback (el M0 mostró que el rollback necesita un core propio con
-// savestate optimizado). Es streaming host-authoritative: perfecto para co-op
-// casual y 100% construible en el navegador. La latencia = red + video.
+// Es streaming host-authoritative: la latencia = red + codificación de video.
+// La ventaja de reacción del host se compensa con el MODO JUSTO (input-delay,
+// ver DelayLine). Netcodes tipo rollback quedan descartados con este core:
+// EmulatorJS no expone frame-step y sus savestates pesan ~16 MB / ~8.5 ms
+// (medido con MK64 real), inviable para guardar/rebobinar 60 veces por segundo.
 
 import { launchLocal } from "../core/emulatorjs";
 import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1, EMPTY_INPUT } from "../input/n64";
@@ -433,8 +435,18 @@ export async function startGuest(opts: {
     detach = attachKeyboard(map, sendInput);
   };
 
+  // Errores FATALES de señalización (sala llena, servidor inalcanzable tras
+  // reintentos): cortan el loop de join para que el mensaje no sea pisado por
+  // el "buscando la sala…" del reintento.
+  let fatalSignal = false;
   const sig = createSignaling(opts.room, "guest");
-  sig.onError = (info) => { status.connection = info; status.phase = "error"; emit(); };
+  sig.onError = (info) => {
+    fatalSignal = true;
+    window.clearInterval(joinTimer);
+    status.connection = info;
+    status.phase = "error";
+    emit();
+  };
 
   // Anuncia "join" y reintenta hasta recibir la oferta. Cubre unirse ANTES de
   // que el host esté listo, DESPUÉS de que ya haya ofertado, y el re-join tras
@@ -442,10 +454,11 @@ export async function startGuest(opts: {
   let joinTimer = 0;
   const startJoining = () => {
     window.clearInterval(joinTimer);
+    if (fatalSignal) return;
     let tries = 0;
     sig.send({ join: true });
     joinTimer = window.setInterval(() => {
-      if (answered || stopped) { window.clearInterval(joinTimer); return; }
+      if (answered || stopped || fatalSignal) { window.clearInterval(joinTimer); return; }
       tries++;
       if (tries < 8) {
         status.connection = "buscando la sala del host…";

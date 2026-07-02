@@ -1,7 +1,7 @@
 # Señalización (implementada): Worker + Durable Object, same-origin
 
-El online (v1 streaming y v2 netcode) hace el handshake WebRTC a través de un
-WebSocket de señalización en `/signal?room=CODIGO`. La pieza es intercambiable
+El online hace el handshake WebRTC a través de un WebSocket de señalización en
+`/signal?room=CODIGO`. La pieza es intercambiable
 gracias a la interfaz `Signaling` de `src/net/signaling.ts`; hoy hay dos
 implementaciones del servidor con **el mismo protocolo y los mismos límites**:
 
@@ -38,7 +38,7 @@ Deploy: `npm run deploy` desde la raíz (config en `wrangler.toml`).
 
 Verificación automatizada: `npm run verify:worker` (contra `npx wrangler dev`,
 prueba 400/426/relay/4001/1009 contra el runtime real) y
-`npm run verify:fullroom` (el 3° que entra ve "sala llena" en la UI).
+`npm run verify:online` (incluye que el 3° que entra ve "sala llena" en la UI).
 
 ## STUN / TURN
 

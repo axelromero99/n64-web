@@ -81,6 +81,23 @@ try {
   const g = await getState(guest);
   check(typeof g?.rttMs === "number", `RTT medido en el guest (${g?.rttMs}ms)`);
 
+  // Un TERCERO intenta entrar a la sala ocupada → debe ver "sala llena" y la
+  // partida de los otros dos sigue como si nada.
+  const ctx3 = await browser.newContext({ viewport: { width: 900, height: 720 } });
+  const third = await ctx3.newPage();
+  await third.goto(invite, { waitUntil: "load" });
+  let fullMsg = "";
+  let sawFull = false;
+  for (let i = 0; i < 12; i++) {
+    await sleep(1000);
+    const s = await getState(third);
+    fullMsg = s?.connection || "";
+    if (s?.phase === "error" && fullMsg.includes("llena")) { sawFull = true; break; }
+  }
+  check(sawFull, `el 3° ve "sala llena" (${JSON.stringify(fullMsg)})`);
+  await ctx3.close();
+  check((await getState(host))?.phase === "connected", "la partida original sigue conectada");
+
   await host.screenshot({ path: `${SHOT}/online-host.png` }).catch(() => {});
   await guest.screenshot({ path: `${SHOT}/online-guest.png` }).catch(() => {});
 

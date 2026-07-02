@@ -1,9 +1,9 @@
 // Modelo del mando de N64 y mapeos por defecto.
 //
-// En modo LOCAL (M1) es EmulatorJS quien lee los mandos (tiene su propio menu
-// de configuracion). Este modulo es el modelo COMPARTIDO que usara el modo
-// ONLINE (rollback, M2/M3): ahi necesitamos capturar el input de cada frame
-// como un valor pequeno y serializable para enviarlo por la red.
+// En modo LOCAL es EmulatorJS quien lee los mandos (tiene su propio menu de
+// configuracion). Este modulo es el modelo COMPARTIDO que usa el modo ONLINE:
+// captura el input como un valor pequeno y serializable (4 bytes) para
+// enviarlo por la red.
 
 /** Los 14 botones digitales del mando de N64 (1 bit cada uno). */
 export enum N64Button {
@@ -28,7 +28,7 @@ export enum N64Button {
  * `buttons` es una mascara de bits (N64Button), y el stick va como dos enteros
  * de -128..127 (rango nativo del stick analogico de N64).
  *
- * Cabe en 4 bytes -> ideal para rollback (se manda un paquete diminuto/frame).
+ * Cabe en 4 bytes -> un paquete diminuto por cada cambio de input.
  */
 export interface N64Input {
   buttons: number; // OR de N64Button

@@ -1,7 +1,7 @@
 // Smoke de UI + accesibilidad básica (headless, sin ROM):
 //  - landing renderiza las 3 cards y son operables con TECLADO (Tab + Enter)
 //  - modal de controles abre y cierra con Escape
-//  - navegación entre pantallas no rompe (v2 → landing → online)
+//  - navegación entre pantallas no rompe (local → landing → online)
 //  - el campo de código recibe foco automático
 //  - hay favicon (sin 404 de consola)
 import { chromium } from "playwright";
@@ -18,7 +18,7 @@ try {
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(BASE, { waitUntil: "load" });
 
-  check((await p.locator(".card").count()) === 3, "landing: 3 cards");
+  check((await p.locator(".card").count()) === 2, "landing: 2 cards (Local y Online)");
   check(await p.evaluate(() => [...document.querySelectorAll(".card")].every((c) => c.getAttribute("role") === "button" && c.tabIndex === 0)), "cards con role=button y tabindex");
 
   // Activar "Jugar Online" con TECLADO: foco directo + Enter.
@@ -40,8 +40,8 @@ try {
   await sleep(200);
   check(await p.evaluate(() => !document.querySelector(".modal-backdrop")), "modal cierra con Escape");
 
-  // Navegación v2 → landing → online sin errores de página.
-  await p.evaluate(() => (location.hash = "v2"));
+  // Navegación local → landing → online sin errores de página.
+  await p.evaluate(() => (location.hash = "local"));
   await sleep(300);
   await p.evaluate(() => (location.hash = "landing"));
   await sleep(300);

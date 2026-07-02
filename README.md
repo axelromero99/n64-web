@@ -16,43 +16,32 @@ alguien en el mismo sillón, o con alguien al otro lado del mundo.
 | Modo | Qué es | Estado |
 |------|--------|--------|
 | 🛋️ **Local (2-4)** | N64 real en una PC, varios mandos. Sin latencia, perfectamente justo. | ✅ |
-| 🌐 **Online 2P (casual)** | El host emula y transmite video por WebRTC; el invitado manda su input. **Modo justo** (input-delay) para que el host no tenga ventaja. | ✅ |
-| 🧪 **Netcode justo (v2)** | Demo del online *competitivo*: **lockstep** y **rollback** deterministas — ambos corren la misma sim e intercambian solo inputs (cero ventaja). Juego de prueba: Pong. | ✅ (demo) |
-| 🕹️ Online competitivo con N64 real | El netcode justo (v2) manejando N64. Requiere un core N64 determinista propio en WASM. | 🔭 futuro (otro repo) |
+| 🌐 **Online 2P** | El host emula y transmite video por WebRTC; el invitado manda su input. **Modo justo** (input-delay) para que el host no tenga ventaja. | ✅ |
 
-## Lo interesante (por qué existe)
+## Cómo funciona el online (y el modo justo)
 
-El online "fácil" de emuladores (host transmite video) es **asimétrico**: el host
-juega local sin lag y el invitado sufre latencia → ventaja del host. Este proyecto
-lo aborda en capas honestas:
+El online de emuladores por streaming es **asimétrico** por naturaleza: el host
+juega local sin lag y el invitado sufre la latencia de red + video → ventaja del
+host. Acá eso se compensa con el **modo justo**: el host juega con sus inputs
+retrasados exactamente la latencia que sufre el invitado (medida en vivo por
+RTT), así **ninguno reacciona antes que el otro**. La latencia de video del
+invitado no desaparece (es inherente al streaming), pero la ventaja de reacción
+sí.
 
-1. **Streaming + modo justo** — para casual. El *modo justo* iguala el timing de
-   input (retrasa los inputs del host la latencia del invitado), quitando la
-   ventaja de reacción. No borra la latencia de video (inherente al streaming).
-2. **Netcode determinista (v2)** — para competitivo. Ambos peers corren la **misma
-   simulación desde la misma semilla** e intercambian **solo inputs**:
-   - **Lockstep**: espera los inputs de ambos → exacto, pero se traba con lag.
-   - **Rollback**: **predice** el input remoto ausente y **corrige** re-simulando
-     desde el último frame confirmado → fluido aun con lag. (La técnica de GGPO.)
-
-   La propiedad de fairness está **verificada**: dos peers aislados, con inputs
-   distintos y 80 ms de latencia, convergen a **hashes de estado idénticos** frame
-   a frame. Nadie tiene ventaja.
+Todo el tráfico del juego es **P2P** (WebRTC) — video del host al invitado,
+inputs del invitado al host (4 bytes por cambio). El servidor solo presenta a
+los dos peers y no ve nada del juego.
 
 ## Arquitectura
 
 ```
 Frontend (TypeScript + Vite, sin framework)
 ├─ core/emulatorjs.ts   Core N64 (EmulatorJS, versión fijada) para local + host online
-├─ net/                 Online v1 (streaming host-authoritative)
+├─ net/                 Online (streaming host-authoritative)
 │  ├─ signaling.ts        WebSocket con reconexión (dev: plugin Vite · prod: Durable Object)
-│  ├─ rtc.ts              utilidades WebRTC compartidas (ICE, RTT, razas de señalización)
+│  ├─ rtc.ts              utilidades WebRTC (ICE/TURN, RTT, razas de señalización)
 │  └─ online.ts           WebRTC: video (host→guest) + input (guest→host) + modo justo
-├─ v2/                  Online v2 (netcode determinista, demo)
-│  ├─ sim.ts              interfaz Simulation + Pong (matemática entera = determinista)
-│  ├─ lockstep.ts         motor lockstep
-│  ├─ rollback.ts         motor rollback (predicción + corrección)
-│  └─ peer.ts             transporte WebRTC simétrico (solo inputs + semilla)
+├─ input/n64.ts         modelo del mando + presets de teclado compartidos
 └─ ui/                  pantallas, componentes, controles
 
 Señalización: worker/signaling.js — Cloudflare Worker + Durable Object, con
@@ -96,35 +85,22 @@ Todo lo marcado ✅ está probado de forma automatizada, no a mano. Con el dev
 server corriendo (`npm run dev`):
 
 ```bash
-npm run verify:quick   # sin ROM: UI, casos de fallo, lockstep y rollback (~3 min)
+npm run verify:quick   # sin ROM: UI y casos de fallo (~1 min)
 npm run verify:all     # todo, incluye los flujos con la ROM real (~10 min)
 ```
 
 | Script (`npm run …`) | Qué prueba |
 |--------|-----------|
 | `verify:ui` | UI + accesibilidad: cards con teclado, modal, autofocus, navegación |
-| `verify:badcode` | caso de fallo: código de sala inexistente avisa claro (v1 y v2) |
-| `verify:fullroom` | caso de fallo: el 3° en entrar ve "sala llena"; los 2 siguen jugando |
-| `verify:v2` | lockstep: hashes de estado idénticos entre peers aislados |
-| `verify:rollback` | rollback bajo 80 ms: predice, corrige y converge a estado idéntico |
-| `verify:online` | online v1 e2e: invite link, conexión, video, input, modo justo |
+| `verify:badcode` | caso de fallo: código de sala inexistente avisa claro |
+| `verify:online` | e2e: invite link, conexión, video, input, modo justo, sala llena |
 | `verify:controls` | esquema de controles unificado host + guest |
 | `verify:fair` | modo justo: input del host aplicado con delay |
 | `verify:disconnect` | el guest se cae: input de P2 reseteado, re-join a la misma sala |
 | `verify:worker` | límites del Durable Object contra `wrangler dev` (workerd real) |
-| `verify:prod` | el sitio DESPLEGADO: COOP/COEP, conexión, video, v2 y rollback en vivo |
-| `scripts/m0-ejs.mjs` | M0: coste de savestate/loadstate/determinismo del core |
+| `verify:prod` | el sitio DESPLEGADO: COOP/COEP, conexión, video en vivo |
 
 Todos devuelven exit code ≠ 0 si algo falla (sirven para CI).
-
-## Roadmap
-
-- [x] Local 2-4 · Online streaming · Modo justo · Controles unificados
-- [x] Netcode determinista v2 (lockstep + rollback), verificado
-- [ ] **Core N64 determinista en WASM** — para que el netcode justo maneje N64 real.
-  Ver [`docs/rollback-core.md`](./docs/rollback-core.md). Es la pieza grande y va en
-  su propio repo/proyecto: forkear N64Wasm/mupen64plus, exponer `retro_run` (frame-
-  step) + `retro_serialize`, forzar determinismo (CPU intérprete, RSP LLE).
 
 ## Notas
 

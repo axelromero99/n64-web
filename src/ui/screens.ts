@@ -1,10 +1,9 @@
 import { launchLocal } from "../core/emulatorjs";
 import { renderOnline } from "./online-screen";
-import { renderV2 } from "./v2-screen";
 import { controlsHelp } from "./controls-help";
 import { el, button, clickable, romDropzone, overlay, toast, touchWarning } from "./components";
 
-export type Screen = "landing" | "local" | "online" | "m0" | "v2";
+export type Screen = "landing" | "local" | "online";
 
 // Cleanup de la pantalla activa (conexiones, timers, listeners globales). La
 // pantalla que arranca algo con vida propia lo registra acá; render() lo
@@ -59,14 +58,6 @@ function landing(go: (s: Screen) => void): HTMLElement {
 
   cards.append(local, online);
   wrap.append(cards);
-
-  const v2 = clickable(el("div", { class: "card", style: "margin-top:18px" },
-    el("div", { class: "arrow", textContent: "→" }),
-    el("div", { class: "card-icon", textContent: "🧪" }),
-    el("h2", { innerHTML: 'Demo técnica: netcode competitivo <span class="badge">Pong · todavía no es N64</span>' }),
-    el("p", { textContent: "El motor del futuro online competitivo (lockstep + rollback deterministas, cero ventaja), probado con un Pong. Acá NO se juega N64: para eso usá Jugar Online. El core N64 determinista que se enchufa a este motor es el próximo gran paso." }),
-  ), () => go("v2"));
-  wrap.append(v2);
   return wrap;
 }
 
@@ -125,23 +116,12 @@ function local(go: (s: Screen) => void): HTMLElement {
   return panel;
 }
 
-// ---------- M0 ----------
-
-function m0Screen(): HTMLElement {
-  const panel = el("div", { class: "panel" });
-  panel.append(el("p", { class: "muted small", textContent: "Cargando el banco de pruebas…" }));
-  // Import dinámico: nostalgist solo se descarga si alguien entra al spike,
-  // no en cada visita a la página.
-  void import("../m0/spike").then(({ renderSpike }) => renderSpike(panel));
-  return panel;
-}
-
 // ---------- Footer ----------
 
 function footer(): HTMLElement {
   return el("div", { class: "footer" },
     el("div", { innerHTML: "Cargá tu propia ROM — nunca se sube a ningún servidor. Es tu partida, en tu navegador." }),
-    el("div", { innerHTML: '<a href="#m0">🔬 Spike técnico (M0)</a> · hecho con WebRTC + WebAssembly' }),
+    el("div", { textContent: "Hecho con WebRTC + WebAssembly" }),
   );
 }
 
@@ -154,8 +134,6 @@ export function render(app: HTMLElement, go: (s: Screen) => void, screen: Screen
   app.append(topbar(go));
   if (screen === "landing") app.append(landing(go));
   else if (screen === "local") app.append(local(go));
-  else if (screen === "online") renderOnline(app, () => go("landing"));
-  else if (screen === "v2") renderV2(app, () => go("landing"));
-  else app.append(m0Screen());
+  else renderOnline(app, () => go("landing"));
   app.append(footer());
 }

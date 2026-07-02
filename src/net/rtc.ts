@@ -1,5 +1,5 @@
-// Utilidades WebRTC compartidas entre el online v1 (streaming) y la v2 (netcode).
-// Acá vive lo que antes estaba duplicado en online.ts y v2/peer.ts.
+// Utilidades WebRTC del modo online: config ICE (STUN + TURN opcional), poll
+// de RTT y los helpers que evitan las razas clásicas de señalización.
 
 export const ICE_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:stun.l.google.com:19302" }],
@@ -28,7 +28,7 @@ export async function iceConfig(): Promise<RTCConfiguration> {
 }
 
 /**
- * Hooks de debug en window (__n64net, __v2, __n64hostPc, …): solo en dev o con
+ * Hooks de debug en window (__n64net, __n64hostPc, …): solo en dev o con
  * ?debug=1 explícito. En producción normal no se exponen — los scripts de
  * verificación contra prod pasan ?debug=1 en la URL.
  */
