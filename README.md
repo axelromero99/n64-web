@@ -42,10 +42,11 @@ lo aborda en capas honestas:
 ## Arquitectura
 
 ```
-Frontend (Cloudflare Pages/Worker, estático)
-├─ core/emulatorjs.ts   Core N64 (EmulatorJS) para local + host online
+Frontend (TypeScript + Vite, sin framework)
+├─ core/emulatorjs.ts   Core N64 (EmulatorJS, versión fijada) para local + host online
 ├─ net/                 Online v1 (streaming host-authoritative)
-│  ├─ signaling.ts        WebSocket (dev: plugin Vite · prod: Durable Object)
+│  ├─ signaling.ts        WebSocket con reconexión (dev: plugin Vite · prod: Durable Object)
+│  ├─ rtc.ts              utilidades WebRTC compartidas (ICE, RTT, razas de señalización)
 │  └─ online.ts           WebRTC: video (host→guest) + input (guest→host) + modo justo
 ├─ v2/                  Online v2 (netcode determinista, demo)
 │  ├─ sim.ts              interfaz Simulation + Pong (matemática entera = determinista)
@@ -54,7 +55,9 @@ Frontend (Cloudflare Pages/Worker, estático)
 │  └─ peer.ts             transporte WebRTC simétrico (solo inputs + semilla)
 └─ ui/                  pantallas, componentes, controles
 
-Señalización: worker/signaling.js  (Cloudflare Worker + Durable Object)
+Señalización: worker/signaling.js — Cloudflare Worker + Durable Object, con
+límites anti-abuso (2 por sala, tamaño/cantidad de mensajes, Origin).
+Detalle: docs/signaling-cloudflare.md
 ```
 
 Todo el juego online es **P2P** (WebRTC): el servidor solo hace el "apretón de
@@ -89,16 +92,30 @@ Detalle paso a paso en [`DEPLOY.md`](./DEPLOY.md).
 
 ## Verificación (Playwright, contra la ROM real)
 
-Todo lo marcado ✅ está probado de forma automatizada, no a mano:
+Todo lo marcado ✅ está probado de forma automatizada, no a mano. Con el dev
+server corriendo (`npm run dev`):
 
-| Script | Qué prueba |
+```bash
+npm run verify:quick   # sin ROM: UI, casos de fallo, lockstep y rollback (~3 min)
+npm run verify:all     # todo, incluye los flujos con la ROM real (~10 min)
+```
+
+| Script (`npm run …`) | Qué prueba |
 |--------|-----------|
+| `verify:ui` | UI + accesibilidad: cards con teclado, modal, autofocus, navegación |
+| `verify:badcode` | caso de fallo: código de sala inexistente avisa claro (v1 y v2) |
+| `verify:fullroom` | caso de fallo: el 3° en entrar ve "sala llena"; los 2 siguen jugando |
+| `verify:v2` | lockstep: hashes de estado idénticos entre peers aislados |
+| `verify:rollback` | rollback bajo 80 ms: predice, corrige y converge a estado idéntico |
+| `verify:online` | online v1 e2e: invite link, conexión, video, input, modo justo |
+| `verify:controls` | esquema de controles unificado host + guest |
+| `verify:fair` | modo justo: input del host aplicado con delay |
+| `verify:disconnect` | el guest se cae: input de P2 reseteado, re-join a la misma sala |
+| `verify:worker` | límites del Durable Object contra `wrangler dev` (workerd real) |
+| `verify:prod` | el sitio DESPLEGADO: COOP/COEP, conexión, video, v2 y rollback en vivo |
 | `scripts/m0-ejs.mjs` | M0: coste de savestate/loadstate/determinismo del core |
-| `scripts/online-verify*.mjs` | online v1: conexión, input y video (incl. cross-contexto) |
-| `scripts/verify-controls.mjs` | esquema de controles unificado host + guest |
-| `scripts/verify-fair.mjs` | modo justo: input del host aplicado con delay |
-| `scripts/verify-v2-fairness.mjs` | lockstep: hashes idénticos entre peers |
-| `scripts/verify-rollback.mjs` | rollback bajo 80 ms: predice y converge a estado idéntico |
+
+Todos devuelven exit code ≠ 0 si algo falla (sirven para CI).
 
 ## Roadmap
 

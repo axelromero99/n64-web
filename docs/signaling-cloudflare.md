@@ -1,64 +1,49 @@
-# Señalización cross-máquina (el único cambio para jugar por internet)
+# Señalización (implementada): Worker + Durable Object, same-origin
 
-Hoy el modo online usa `createLocalSignaling` (BroadcastChannel) → funciona entre
-pestañas del **mismo** navegador. Para jugar entre **máquinas distintas** solo hay
-que reemplazar esa pieza; el resto (WebRTC, video, input) no cambia, porque
-`src/net/signaling.ts` define una interfaz `Signaling` estable.
+El online (v1 streaming y v2 netcode) hace el handshake WebRTC a través de un
+WebSocket de señalización en `/signal?room=CODIGO`. La pieza es intercambiable
+gracias a la interfaz `Signaling` de `src/net/signaling.ts`; hoy hay dos
+implementaciones del servidor con **el mismo protocolo y los mismos límites**:
 
-## Opción A — atajo sin backend (deploy hoy)
+| Entorno | Quién sirve `/signal` | Archivo |
+|---------|----------------------|---------|
+| `npm run dev` | plugin de Vite, en proceso | `vite.config.ts` (`signalingServer`) |
+| Producción | Worker de Cloudflare + Durable Object | `worker/signaling.js` |
 
-Broker público de **PeerJS** o un servicio realtime (Ably/Pusher). Cero servidor
-propio. Contra: dependés de un tercero y sin TURN algunos NAT no conectan.
+Un solo Worker sirve el frontend (`dist/`, binding ASSETS) **y** la
+señalización, así el cliente usa `/signal` same-origin sin configurar nada.
+Deploy: `npm run deploy` desde la raíz (config en `wrangler.toml`).
 
-## Opción B — Cloudflare Durable Object (recomendado, gratis)
+## Cómo funciona
 
-Una "sala" por código = una instancia de Durable Object que reenvía mensajes de
-señalización entre los 2 peers por WebSocket. Con **WebSocket Hibernation** las
-salas inactivas no se cobran → cabe en el free tier holgado.
+- Una **sala** = una instancia del Durable Object `SignalRoom`
+  (`idFromName(código)` → mismo código, misma instancia).
+- El DO **relayea** cada mensaje a los otros sockets de la sala. No interpreta
+  el contenido: `join`/`offer`/`answer`/`ice` son cosa del cliente.
+- Usa **WebSocket Hibernation**: las salas inactivas no se cobran → free tier.
+- El cliente (`createWebSocketSignaling`) encola lo que se envía antes de que
+  abra el socket, y ante un cierre inesperado **reconecta con backoff** (5
+  intentos) antes de rendirse con un error claro.
 
-```js
-// worker/signaling-do.js  (esqueleto)
-export class Room {
-  constructor(state) { this.sessions = []; }
-  async fetch(req) {
-    const [client, server] = Object.values(new WebSocketPair());
-    server.accept();
-    this.sessions.push(server);
-    server.addEventListener("message", (e) => {
-      // reenviar al OTRO peer de la sala
-      for (const s of this.sessions) if (s !== server) s.send(e.data);
-    });
-    server.addEventListener("close", () => {
-      this.sessions = this.sessions.filter((s) => s !== server);
-    });
-    return new Response(null, { status: 101, webSocket: client });
-  }
-}
-export default {
-  fetch(req, env) {
-    const code = new URL(req.url).searchParams.get("room") || "sala1";
-    const id = env.ROOM.idFromName(code);        // misma sala → mismo DO
-    return env.ROOM.get(id).fetch(req);
-  },
-};
-```
+## Límites anti-abuso (espejados en dev y prod)
 
-Y en el cliente, una implementación de `Signaling` sobre ese WebSocket:
+| Límite | Valor | Respuesta |
+|--------|-------|-----------|
+| Código de sala | `^[A-Z0-9]{4,8}$` (se normaliza a mayúsculas) | HTTP 400 |
+| Sockets por sala | 2 | close **4001** `room_full` → la UI dice "sala llena" |
+| Tamaño de mensaje | 32 KB, solo texto (un SDP real pesa < 10 KB) | close 1009 |
+| Mensajes por socket | 500 | close 1008 |
+| Origin | mismo host del Worker (o localhost) | HTTP 403 |
+| `/signal` sin Upgrade | — | HTTP 426 |
 
-```ts
-export function createCloudflareSignaling(room: string): Signaling {
-  const ws = new WebSocket(`wss://TU-WORKER.workers.dev/?room=${room}`);
-  const sig: Signaling = { send: (m) => ws.send(JSON.stringify(m)), onMessage: () => {}, close: () => ws.close() };
-  ws.onmessage = (e) => sig.onMessage(JSON.parse(e.data));
-  return sig;
-}
-```
-
-Cambiar en `src/net/online.ts` el `createLocalSignaling(...)` por
-`createCloudflareSignaling(...)` y listo.
+Verificación automatizada: `npm run verify:worker` (contra `npx wrangler dev`,
+prueba 400/426/relay/4001/1009 contra el runtime real) y
+`npm run verify:fullroom` (el 3° que entra ve "sala llena" en la UI).
 
 ## STUN / TURN
 
-- **STUN** (gratis): `stun:stun.cloudflare.com:3478` — ya está en `online.ts`.
-- **TURN** (respaldo para NAT difíciles): **Cloudflare Realtime TURN**, 1 TB/mes
-  gratis. Se agregan las credenciales al array `iceServers` de `RTCPeerConnection`.
+- **STUN** (gratis): `stun:stun.cloudflare.com:3478` + Google como respaldo —
+  en `src/net/rtc.ts` (`ICE_CONFIG`).
+- **TURN** (respaldo para NAT difíciles, ~5-10 % de los pares): Cloudflare
+  Realtime TURN, 1 TB/mes gratis. Ver la sección TURN de `DEPLOY.md` para
+  activarlo (opcional; sin configurar, todo funciona solo con STUN).

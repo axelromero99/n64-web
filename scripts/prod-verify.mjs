@@ -2,10 +2,11 @@
 // carga la página, host crea sala, guest (contexto aislado) abre el invite link
 // y se conecta usando la señalización REAL del Worker. Todo en producción.
 import { chromium } from "playwright";
+import os from "node:os";
 
 const ROM = "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
 const BASE = "https://n64-web.axelromero99.workers.dev/";
-const SHOT = "C:/Users/user1/AppData/Local/Temp/claude/C--Users-user1-Desktop-programacion-emu/80055855-84f5-4062-b1cc-00bd6b00ba6b/scratchpad";
+const SHOT = os.tmpdir();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const browser = await chromium.launch({ headless: false, args: ["--autoplay-policy=no-user-gesture-required", "--ignore-gpu-blocklist"] });

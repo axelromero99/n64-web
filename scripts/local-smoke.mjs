@@ -1,7 +1,8 @@
-// Smoke test del modo LOCAL con la UI nueva: dropzone -> boot -> juego visible.
+// Smoke test del modo LOCAL: dropzone -> boot -> juego visible.
 import { chromium } from "playwright";
+import os from "node:os";
 const ROM = "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
-const SHOT = "C:/Users/user1/AppData/Local/Temp/claude/C--Users-user1-Desktop-programacion-emu/80055855-84f5-4062-b1cc-00bd6b00ba6b/scratchpad";
+const SHOT = os.tmpdir();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await chromium.launch({ headless: false, args: ["--autoplay-policy=no-user-gesture-required", "--ignore-gpu-blocklist"] });
 try {
@@ -22,5 +23,6 @@ try {
     for(let i=0;i<d.length;i+=4) s+=d[i]+d[i+1]+d[i+2]; return Math.round(s/(d.length/4));
   });
   await page.screenshot({ path: `${SHOT}/local-smoke.png` });
-  console.log(`Local mode: canvas brillo=${bright} → ${bright>20?"JUEGO VISIBLE ✓":"negro/boot"}`);
+  console.log(`Local mode: canvas brillo=${bright} → ${bright>20?"JUEGO VISIBLE ✓":"negro/boot ✗"}`);
+  if (bright <= 20) process.exitCode = 1;
 } finally { await browser.close(); }

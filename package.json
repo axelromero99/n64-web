@@ -2,14 +2,27 @@
   "name": "n64-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Emulador N64 en el navegador con multijugador local y online (rollback) - desplegable en Cloudflare Pages",
+  "description": "Emulador N64 en el navegador con multijugador local y online (streaming + netcode determinista) - deploy en Cloudflare Workers",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "verify:ui": "node scripts/verify-ui-smoke.mjs",
+    "verify:badcode": "node scripts/verify-badcode.mjs",
+    "verify:fullroom": "node scripts/verify-full-room.mjs",
+    "verify:v2": "node scripts/verify-v2-fairness.mjs",
+    "verify:rollback": "node scripts/verify-rollback.mjs",
+    "verify:online": "node scripts/online-verify.mjs",
+    "verify:controls": "node scripts/verify-controls.mjs",
+    "verify:fair": "node scripts/verify-fair.mjs",
+    "verify:disconnect": "node scripts/verify-disconnect.mjs",
+    "verify:quick": "npm run verify:ui && npm run verify:badcode && npm run verify:fullroom && npm run verify:v2 && npm run verify:rollback",
+    "verify:all": "npm run verify:quick && npm run verify:online && npm run verify:controls && npm run verify:fair && npm run verify:disconnect",
+    "verify:prod": "node scripts/prod-verify.mjs && node scripts/verify-v2-prod.mjs && node scripts/verify-rollback-prod.mjs",
+    "verify:worker": "node scripts/worker-limits-test.mjs"
   },
   "dependencies": {
     "nostalgist": "^0.21.1"

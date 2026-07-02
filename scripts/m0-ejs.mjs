@@ -1,11 +1,11 @@
 // M0 vía EmulatorJS (core N64 fiable). Navega al modo local, bootea la ROM real,
 // introspecciona la API de estado y mide saveState/loadState + determinismo.
 import { chromium } from "playwright";
+import os from "node:os";
 
 const ROM = "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
 const URL = "http://localhost:5173/#local";
-const SHOT =
-  "C:/Users/user1/AppData/Local/Temp/claude/C--Users-user1-Desktop-programacion-emu/80055855-84f5-4062-b1cc-00bd6b00ba6b/scratchpad";
+const SHOT = os.tmpdir();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const browser = await chromium.launch({
@@ -19,7 +19,7 @@ try {
 
   await page.goto(URL, { waitUntil: "load", timeout: 30000 });
   console.log("→ Cargando ROM en modo local (EmulatorJS)…");
-  await page.setInputFiles("#rom", ROM);
+  await page.setInputFiles("input[type=file]", ROM);
 
   // Esperar a que EmulatorJS tenga gameManager (baja el core de su CDN).
   let ready = false;

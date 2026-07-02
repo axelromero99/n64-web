@@ -77,6 +77,7 @@ try {
     console.log("✓ FAIRNESS OK: estado byte-idéntico en ambos peers en todos los frames → cero ventaja.");
   } else {
     console.log(`✗ divergencia en ${mismatches} frames (primero: ${firstBad}).`);
+    process.exitCode = 1;
   }
 } finally {
   await browser.close();

@@ -57,4 +57,5 @@ try {
   console.log(`P1 eje-derecha por nuestra ruta: ${p1.length} llamadas, valor ${[...new Set(p1)].join("/")}`);
   const ok = kbBefore.includes(false) && st?.fair === true && p1.some((v) => v === 32767);
   console.log(ok ? "✓ MODO JUSTO OK: teclado interno off + P1 aplicado con delay a 32767" : "✗ revisar");
+  if (!ok) process.exitCode = 1;
 } finally { await browser.close(); }

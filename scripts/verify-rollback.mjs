@@ -52,7 +52,9 @@ try {
   console.log(`predicción activa : ${predicted ? "sí" : "no"} (rollbacks A=${ia.rb} B=${ib.rb})`);
   console.log(`frames confirmados comparados: ${comp} · idénticos: ${comp - bad}/${comp}`);
   console.log(`desync: A=${ia.desync} B=${ib.desync}`);
-  console.log(comp > 20 && bad === 0 && predicted && !ia.desync && !ib.desync
+  const ok = comp > 20 && bad === 0 && predicted && !ia.desync && !ib.desync;
+  console.log(ok
     ? "✓ ROLLBACK OK: predice con latencia y converge a estado confirmado idéntico (fair)"
     : "✗ revisar");
+  if (!ok) process.exitCode = 1;
 } finally { await browser.close(); }

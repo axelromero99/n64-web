@@ -72,4 +72,5 @@ try {
 
   console.log("\n===== RESULTADO =====");
   console.log(hostOk && guestOk ? "✓ Controles unificados OK en host y guest" : "✗ hay algo que ajustar");
+  if (!(hostOk && guestOk)) process.exitCode = 1;
 } finally { await browser.close(); }
