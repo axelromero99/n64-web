@@ -1,4 +1,5 @@
-# Cabeceras que Cloudflare Pages aplica al sitio desplegado.
+# Cabeceras que Cloudflare aplica al sitio desplegado (Workers Assets respeta
+# este archivo _headers igual que Pages; verificado en vivo por prod-verify).
 #
 # COOP + COEP habilitan "cross-origin isolation", requisito para usar
 # SharedArrayBuffer (hilos/SIMD del core WASM). Hara falta cuando integremos

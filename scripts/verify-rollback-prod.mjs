@@ -8,12 +8,12 @@ try {
   const info = (p) => p.evaluate(() => { const e = window.__v2; return e ? { cur: e.currentFrameNum, conf: e.confirmedFrameNum, rb: e.rollbackCount, desync: e.isDesync } : null; }).catch(() => null);
   const ctxA = await browser.newContext({ viewport: { width: 720, height: 600 } });
   const A = await ctxA.newPage(); A.on("pageerror", (e) => console.log("[A]", e.message));
-  await A.goto(`${BASE}?lat=${LAT}&nc=rollback#v2`, { waitUntil: "load", timeout: 30000 });
+  await A.goto(`${BASE}?lat=${LAT}&nc=rollback&debug=1#v2`, { waitUntil: "load", timeout: 30000 });
   await A.click("text=Crear partida"); await sleep(700);
   const code = await A.evaluate(() => document.querySelector(".roomcode-box .code")?.textContent || "");
   const ctxB = await browser.newContext({ viewport: { width: 720, height: 600 } });
   const B = await ctxB.newPage(); B.on("pageerror", (e) => console.log("[B]", e.message));
-  await B.goto(`${BASE}?room=${code}&lat=${LAT}&nc=rollback#v2`, { waitUntil: "load", timeout: 30000 });
+  await B.goto(`${BASE}?room=${code}&lat=${LAT}&nc=rollback&debug=1#v2`, { waitUntil: "load", timeout: 30000 });
   let ready = false;
   for (let i = 0; i < 30; i++) { await sleep(500); if ((await info(A))?.cur >= 0 && (await info(B))?.cur >= 0) { ready = true; break; } }
   if (!ready) throw new Error("no arrancaron");
@@ -29,5 +29,7 @@ try {
   for (let f = from; f <= top; f++) { if (ha[f] === undefined || hb[f] === undefined) continue; comp++; if (ha[f] !== hb[f]) bad++; }
   console.log("\n===== ROLLBACK EN PRODUCCIÓN (lat " + LAT + "ms) =====");
   console.log(`rollbacks A=${ia.rb} B=${ib.rb} · confirmados idénticos ${comp - bad}/${comp} · desync A=${ia.desync} B=${ib.desync}`);
-  console.log(comp > 15 && bad === 0 && (ia.rb > 0 || ib.rb > 0) && !ia.desync ? "✓ OK en vivo" : "✗ revisar");
+  const ok = comp > 15 && bad === 0 && (ia.rb > 0 || ib.rb > 0) && !ia.desync;
+  console.log(ok ? "✓ OK en vivo" : "✗ revisar");
+  if (!ok) process.exitCode = 1;
 } finally { await browser.close(); }

@@ -14,7 +14,7 @@
 // re-sincronizar, y para la demo no vale la complejidad.
 
 import { createSignaling, type Signaling } from "../net/signaling";
-import { ICE_CONFIG, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "../net/rtc";
+import { ICE_CONFIG, DEBUG_HOOKS, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "../net/rtc";
 import { Lockstep, type NetMsg } from "./lockstep";
 import { Rollback } from "./rollback";
 import { PongSim, type SimInput } from "./sim";
@@ -109,7 +109,7 @@ export function startMatch(opts: {
       });
     }
     engine.start(opts.canvas);
-    (window as unknown as { __v2?: Engine }).__v2 = engine; // hook de verificación
+    if (DEBUG_HOOKS) (window as unknown as { __v2?: Engine }).__v2 = engine; // hook de verificación
     status.phase = "connected";
     status.connection = "¡en partida!";
     emit();
@@ -205,6 +205,14 @@ export function startMatch(opts: {
     joinTimer = window.setInterval(() => {
       if (answered || stopped) { window.clearInterval(joinTimer); return; }
       tries++;
+      if (tries >= 60) {
+        // Tras 1 minuto, dejar de insistir (no spamear la señalización).
+        status.connection = "no encuentro esa partida. Verificá el código y recargá para reintentar.";
+        status.phase = "error";
+        emit();
+        window.clearInterval(joinTimer);
+        return;
+      }
       if (tries >= 8 && status.phase === "connecting") {
         status.connection = "no encuentro una partida con ese código. ¿Tu rival ya la creó?";
         status.phase = "error";

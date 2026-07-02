@@ -40,28 +40,57 @@ export function signalingUrl(room: string): string {
   return `${proto}//${location.host}/signal?room=${encodeURIComponent(room)}`;
 }
 
+// Código de cierre que emite el servidor cuando la sala ya tiene 2 peers.
+const CLOSE_ROOM_FULL = 4001;
+
 export function createWebSocketSignaling(room: string): Signaling {
-  const ws = new WebSocket(signalingUrl(room));
+  let ws: WebSocket | null = null;
   const outbox: string[] = [];
+  let closedByUs = false;
+  let retries = 0;
+
   const sig: Signaling = {
     send(msg) {
       const data = JSON.stringify(msg);
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
-      else outbox.push(data); // encolar hasta que abra
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
+      else outbox.push(data); // encolar hasta que (re)abra
     },
     onMessage: () => {},
     close() {
-      try { ws.close(); } catch { /* noop */ }
+      closedByUs = true;
+      try { ws?.close(); } catch { /* noop */ }
     },
   };
-  ws.onopen = () => {
-    for (const d of outbox.splice(0)) ws.send(d);
-    sig.onOpen?.();
+
+  const open = () => {
+    ws = new WebSocket(signalingUrl(room));
+    ws.onopen = () => {
+      retries = 0;
+      for (const d of outbox.splice(0)) ws!.send(d);
+      sig.onOpen?.();
+    };
+    ws.onmessage = (e) => {
+      try { sig.onMessage(JSON.parse(e.data as string) as SignalMessage); } catch { /* mensaje ajeno: ignorar */ }
+    };
+    // Un cierre inesperado (server reiniciado, red) se reintenta con backoff;
+    // la cola retiene lo que se quiera enviar mientras tanto. "Sala llena" es
+    // definitivo: avisar y no reintentar.
+    ws.onclose = (e) => {
+      if (closedByUs) return;
+      if (e.code === CLOSE_ROOM_FULL) {
+        sig.onError?.("esa sala ya está llena (las partidas son de a 2)");
+        return;
+      }
+      if (retries < 5) {
+        retries++;
+        window.setTimeout(() => { if (!closedByUs) open(); }, 1000 * retries);
+      } else {
+        sig.onError?.("no pude conectar con el servidor de la sala — revisá tu internet y recargá");
+      }
+    };
+    ws.onerror = () => { /* el onclose que sigue decide: reintento o error final */ };
   };
-  ws.onmessage = (e) => {
-    try { sig.onMessage(JSON.parse(e.data as string) as SignalMessage); } catch { /* ignorar */ }
-  };
-  ws.onerror = () => sig.onError?.("No se pudo conectar al servidor de señalización");
+  open();
   return sig;
 }
 

@@ -12,7 +12,7 @@ try {
   const ctxA = await browser.newContext({ viewport: { width: 720, height: 600 } });
   const A = await ctxA.newPage();
   A.on("pageerror", (e) => console.log("  [A err]", e.message));
-  await A.goto(BASE + "?nc=lockstep#v2", { waitUntil: "load", timeout: 30000 });
+  await A.goto(BASE + "?nc=lockstep&debug=1#v2", { waitUntil: "load", timeout: 30000 });
   await A.click("text=Crear partida"); await sleep(700);
   const code = await A.evaluate(() => document.querySelector(".roomcode-box .code")?.textContent || "");
   console.log("código:", code);
@@ -20,7 +20,7 @@ try {
   const ctxB = await browser.newContext({ viewport: { width: 720, height: 600 } });
   const B = await ctxB.newPage();
   B.on("pageerror", (e) => console.log("  [B err]", e.message));
-  await B.goto(`${BASE}?room=${code}&nc=lockstep#v2`, { waitUntil: "load", timeout: 30000 });
+  await B.goto(`${BASE}?room=${code}&nc=lockstep&debug=1#v2`, { waitUntil: "load", timeout: 30000 });
 
   let ready = false;
   for (let i = 0; i < 25; i++) { await sleep(500); if ((await st(A))?.frame >= 0 && (await st(B))?.frame >= 0) { ready = true; break; } }
@@ -40,5 +40,7 @@ try {
 
   console.log("\n===== FAIRNESS v2 EN PRODUCCIÓN =====");
   console.log(`frames comparados: ${comp}  ·  idénticos: ${comp - bad}/${comp}  ·  desync: A=${(await st(A)).desync} B=${(await st(B)).desync}`);
-  console.log(bad === 0 && comp > 20 ? "✓ FAIRNESS OK en vivo (Cloudflare)" : `✗ ${bad} divergencias`);
+  const ok = bad === 0 && comp > 20;
+  console.log(ok ? "✓ FAIRNESS OK en vivo (Cloudflare)" : `✗ ${bad} divergencias`);
+  if (!ok) process.exitCode = 1;
 } finally { await browser.close(); }

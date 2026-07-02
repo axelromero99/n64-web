@@ -14,7 +14,7 @@
 import { launchLocal } from "../core/emulatorjs";
 import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1, EMPTY_INPUT } from "../input/n64";
 import { createSignaling, type Signaling } from "./signaling";
-import { ICE_CONFIG, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "./rtc";
+import { ICE_CONFIG, DEBUG_HOOKS, pollRtt, serializeMessages, RemoteCandidates, watchConnection } from "./rtc";
 
 // Reordena los codecs de video para preferir los de mejor calidad (VP9/H264)
 // sobre el VP8 por defecto. Debe llamarse ANTES de createOffer.
@@ -80,7 +80,7 @@ export interface NetStatus {
 }
 
 function publish(s: NetStatus) {
-  (window as unknown as { __n64net?: NetStatus }).__n64net = { ...s };
+  if (DEBUG_HOOKS) (window as unknown as { __n64net?: NetStatus }).__n64net = { ...s };
 }
 
 interface EJSGameManager {
@@ -301,7 +301,7 @@ export async function startHost(opts: {
     }
     // Preferir un codec de mejor calidad que el VP8 por defecto.
     preferVideoCodec(pc, ["video/VP9", "video/H264", "video/VP8"]);
-    (window as unknown as { __n64hostPc?: RTCPeerConnection }).__n64hostPc = pc;
+    if (DEBUG_HOOKS) (window as unknown as { __n64hostPc?: RTCPeerConnection }).__n64hostPc = pc;
 
     const dc = pc.createDataChannel("input", { ordered: false, maxRetransmits: 0 });
     dc.binaryType = "arraybuffer";
@@ -397,12 +397,8 @@ export async function startGuest(opts: {
   const emit = () => { publish(status); opts.onStatus?.(status); };
   emit();
 
-  const dbg = ((window as unknown as { __n64dbg?: Record<string, unknown> }).__n64dbg = {
-    dcFired: false,
-    dcOpen: false,
-    keydown: 0,
-    sent: 0,
-  });
+  const dbg: Record<string, unknown> = { dcFired: false, dcOpen: false, keydown: 0, sent: 0 };
+  if (DEBUG_HOOKS) (window as unknown as { __n64dbg?: Record<string, unknown> }).__n64dbg = dbg;
   let currentMap: KeyboardMap = opts.keyboard ?? DEFAULT_KEYBOARD_P1;
   let detach = () => {};
   let dc: RTCDataChannel | null = null;
@@ -446,9 +442,14 @@ export async function startGuest(opts: {
       if (tries < 8) {
         status.connection = "buscando la sala del host…";
         status.phase = "connecting";
-      } else {
+      } else if (tries < 60) {
         status.connection = "no encuentro una sala con ese código. ¿El host ya creó la sala y cargó su ROM?";
         status.phase = "error";
+      } else {
+        // Tras 1 minuto, dejar de insistir (no spamear la señalización).
+        status.connection = "no encuentro esa sala. Verificá el código con el host y recargá para reintentar.";
+        status.phase = "error";
+        window.clearInterval(joinTimer);
       }
       emit();
       sig.send({ join: true });
@@ -464,7 +465,7 @@ export async function startGuest(opts: {
     pc = new RTCPeerConnection(ICE_CONFIG);
     const thisPc = pc;
     candidates = new RemoteCandidates(pc);
-    (window as unknown as { __n64guestPc?: RTCPeerConnection }).__n64guestPc = pc;
+    if (DEBUG_HOOKS) (window as unknown as { __n64guestPc?: RTCPeerConnection }).__n64guestPc = pc;
 
     pc.addTransceiver("video", { direction: "recvonly" });
     pc.ontrack = (e) => {

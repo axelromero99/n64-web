@@ -5,6 +5,14 @@ export const ICE_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:stun.l.google.com:19302" }],
 };
 
+/**
+ * Hooks de debug en window (__n64net, __v2, __n64hostPc, …): solo en dev o con
+ * ?debug=1 explícito. En producción normal no se exponen — los scripts de
+ * verificación contra prod pasan ?debug=1 en la URL.
+ */
+export const DEBUG_HOOKS: boolean =
+  import.meta.env.DEV || new URLSearchParams(location.search).has("debug");
+
 // Lo que necesitamos de la entrada candidate-pair de getStats() (el RTT real).
 interface CandidatePairStats {
   type: string;

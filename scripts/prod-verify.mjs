@@ -16,10 +16,15 @@ try {
   const ctxHost = await browser.newContext({ viewport: { width: 900, height: 720 } });
   const host = await ctxHost.newPage();
   host.on("pageerror", (e) => console.log("  [host err]", e.message));
-  const resp = await host.goto(BASE, { waitUntil: "load", timeout: 30000 });
+  const resp = await host.goto(BASE + "?debug=1", { waitUntil: "load", timeout: 30000 });
   console.log("página status:", resp?.status());
+  // COOP/COEP tienen que llegar desde el _headers de Workers Assets; sin ellas
+  // no hay cross-origin isolation (SharedArrayBuffer) y el core WASM se degrada.
+  const hd = resp?.headers() ?? {};
+  const coop = hd["cross-origin-opener-policy"] === "same-origin";
+  const coep = hd["cross-origin-embedder-policy"] === "credentialless";
   const coi = await host.evaluate(() => globalThis.crossOriginIsolated);
-  console.log("crossOriginIsolated (prod):", coi);
+  console.log(`COOP: ${hd["cross-origin-opener-policy"]} · COEP: ${hd["cross-origin-embedder-policy"]} · crossOriginIsolated: ${coi}`);
   await host.screenshot({ path: `${SHOT}/prod-landing.png` });
 
   // Host crea sala
@@ -32,7 +37,7 @@ try {
   for (let i = 0; i < 25; i++) { await sleep(1000); if ((await getState(host))?.phase === "waiting") break; }
   const code = await host.evaluate(() => document.querySelector(".roomcode-box .code")?.textContent || "");
   console.log("   código de sala:", code);
-  const invite = `${BASE}?room=${code}#online`;
+  const invite = `${BASE}?room=${code}&debug=1#online`;
 
   // Guest en contexto AISLADO abre el invite link (señalización via Worker)
   const ctxGuest = await browser.newContext({ viewport: { width: 900, height: 720 } });
@@ -68,9 +73,11 @@ try {
   const gs = await getState(guest);
   console.log("\n===== PRODUCCIÓN (Cloudflare en vivo) =====");
   console.log(`página carga     : ${resp?.status() === 200 ? "OK" : "FALLÓ"}`);
+  console.log(`COOP/COEP        : ${coop && coep ? "OK" : "FALLARON (revisar _headers / Workers Assets)"}`);
   console.log(`cross-origin iso : ${coi ? "OK (SharedArrayBuffer ok)" : "NO"}`);
   console.log(`invite + conexión: ${ok ? "OK" : "FALLÓ"}`);
   console.log(`video en vivo    : ${bright > 30 ? "OK (brillo " + bright + ")" : "aún negro/boot"}  rtt=${gs?.rttMs}ms`);
+  if (!(resp?.status() === 200 && coop && coep && coi && ok && bright > 30)) process.exitCode = 1;
 } finally {
   await browser.close();
 }
