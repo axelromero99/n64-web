@@ -4,7 +4,7 @@ import { render, type Screen } from "./ui/screens";
 const app = document.getElementById("app");
 if (!app) throw new Error("No se encontró #app");
 
-const SCREENS: Screen[] = ["landing", "local", "online", "m0"];
+const SCREENS: Screen[] = ["landing", "local", "online", "m0", "v2"];
 
 function currentScreen(): Screen {
   const h = location.hash.slice(1) as Screen;

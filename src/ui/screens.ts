@@ -1,10 +1,11 @@
 import { launchLocal } from "../core/emulatorjs";
 import { renderSpike } from "../m0/spike";
 import { renderOnline } from "./online-screen";
+import { renderV2 } from "./v2-screen";
 import { controlsHelp } from "./controls-help";
 import { el, button, romDropzone, overlay, toast } from "./components";
 
-export type Screen = "landing" | "local" | "online" | "m0";
+export type Screen = "landing" | "local" | "online" | "m0" | "v2";
 
 // ---------- Header + hero ----------
 
@@ -54,6 +55,15 @@ function landing(go: (s: Screen) => void): HTMLElement {
 
   cards.append(local, online);
   wrap.append(cards);
+
+  const v2 = el("div", { class: "card", style: "margin-top:18px" },
+    el("div", { class: "arrow", textContent: "→" }),
+    el("div", { class: "card-icon", textContent: "🧪" }),
+    el("h2", { innerHTML: 'Netcode justo <span class="badge">v2 · experimental</span>' }),
+    el("p", { textContent: "Demo del online competitivo: ambos corren la misma simulación e intercambian solo inputs (lockstep determinista). Cero ventaja. El motor que después manejará N64." }),
+  );
+  v2.onclick = () => go("v2");
+  wrap.append(v2);
   return wrap;
 }
 
@@ -123,6 +133,7 @@ export function render(app: HTMLElement, go: (s: Screen) => void, screen: Screen
   if (screen === "landing") app.append(landing(go));
   else if (screen === "local") app.append(local(go));
   else if (screen === "online") renderOnline(app, () => go("landing"));
+  else if (screen === "v2") renderV2(app, () => go("landing"));
   else app.append(m0Screen());
   app.append(footer());
 }
