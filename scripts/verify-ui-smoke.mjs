@@ -1,5 +1,5 @@
 // Smoke de UI + accesibilidad básica (headless, sin ROM):
-//  - landing renderiza las 3 cards y son operables con TECLADO (Tab + Enter)
+//  - landing renderiza las 2 cards y son operables con TECLADO (Tab + Enter)
 //  - modal de controles abre y cierra con Escape
 //  - navegación entre pantallas no rompe (local → landing → online)
 //  - el campo de código recibe foco automático

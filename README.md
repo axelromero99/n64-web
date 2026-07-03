@@ -67,21 +67,30 @@ entra en el free tier.
 
 El online por streaming es asimétrico por naturaleza: el host juega local sin
 lag y el invitado sufre red + codificación de video. En vez de ignorarlo (como
-hace la mayoría), el host juega con sus propios inputs **retrasados
-exactamente la latencia de ida del invitado**, medida en vivo contra
-`getStats()` del par ICE (RTT/2, acotado). Ninguno reacciona antes que el
-otro. La latencia de video del invitado no desaparece — es inherente al
-streaming — pero la **ventaja de reacción** sí, y eso es lo que define quién
-gana. Se puede apagar en caliente desde la UI.
+hace la mayoría), el host juega con sus propios inputs **retrasados la latencia
+de ida del invitado**, medida en vivo contra `getStats()` del par ICE (RTT/2,
+acotado a 16-120 ms). La latencia de video del invitado no desaparece —es
+inherente al streaming— pero la **ventaja de reacción del host se reduce
+fuertemente** al meterle a él el mismo handicap de timing de input. Se apaga en
+caliente desde la UI.
+
+> **Honestidad sobre el alcance:** el handicap compensa el viaje del *input*
+> (RTT/2), no el pipeline de *video* del invitado (codificación + jitter), así
+> que empareja el timing de reacción sin igualarlo al 100 %. Y solo intercepta
+> **teclado**: un host con gamepad USB lo evade. Es una mejora medible y
+> honesta, no una promesa de paridad perfecta — para eso haría falta netcode
+> determinista, inviable con este core (ver abajo).
 
 ### Streaming host-authoritative: una decisión medida, no una limitación aceptada
 
 Antes de elegir esta arquitectura se midió la alternativa (netcode rollback
 sobre el core existente) con Playwright y una ROM real: los savestates de
 mupen64plus_next en WASM pesan **16 MB y tardan ~8.5 ms** — guardar/rebobinar
-estado 60 veces por segundo es inviable en el navegador. El streaming P2P con
-compensación de input es la arquitectura que sí entrega multijugador online
-jugable hoy, y la elección quedó documentada con los números.
+estado 60 veces por segundo es inviable en el navegador (un buffer de 2 s serían
+~1.9 GB de RAM). El streaming P2P con compensación de input es la arquitectura
+que sí entrega multijugador jugable hoy. La medición completa y reproducible
+está en [`docs/M0-findings.md`](./docs/M0-findings.md)
+(`node scripts/m0-ejs.mjs`).
 
 ### Conexiones que sobreviven al mundo real
 

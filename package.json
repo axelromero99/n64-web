@@ -19,7 +19,8 @@
     "verify:quick": "npm run verify:ui && npm run verify:badcode",
     "verify:all": "npm run verify:quick && npm run verify:online && npm run verify:controls && npm run verify:fair && npm run verify:disconnect",
     "verify:prod": "node scripts/prod-verify.mjs",
-    "verify:worker": "node scripts/worker-limits-test.mjs"
+    "verify:worker": "node scripts/worker-limits-test.mjs",
+    "verify:devlimits": "node scripts/dev-limits-test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.61.1",

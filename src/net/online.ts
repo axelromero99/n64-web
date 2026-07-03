@@ -11,7 +11,8 @@
 // La ventaja de reacción del host se compensa con el MODO JUSTO (input-delay,
 // ver DelayLine). Netcodes tipo rollback quedan descartados con este core:
 // EmulatorJS no expone frame-step y sus savestates pesan ~16 MB / ~8.5 ms
-// (medido con MK64 real), inviable para guardar/rebobinar 60 veces por segundo.
+// (medido con MK64 real; ver docs/M0-findings.md), inviable para guardar/
+// rebobinar 60 veces por segundo.
 
 import { launchLocal } from "../core/emulatorjs";
 import { N64Button, type N64Input, type KeyboardMap, packInput, unpackInput, DEFAULT_KEYBOARD_P1, EMPTY_INPUT } from "../input/n64";

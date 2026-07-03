@@ -1,7 +1,7 @@
 // Smoke test del modo LOCAL: dropzone -> boot -> juego visible.
 import { chromium } from "playwright";
 import os from "node:os";
-const ROM = "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
+const ROM = process.env.ROM || "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
 const SHOT = os.tmpdir();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await chromium.launch({ headless: false, args: ["--autoplay-policy=no-user-gesture-required", "--ignore-gpu-blocklist"] });

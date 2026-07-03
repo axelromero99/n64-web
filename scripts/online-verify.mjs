@@ -6,7 +6,7 @@
 import { chromium } from "playwright";
 import os from "node:os";
 
-const ROM = "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
+const ROM = process.env.ROM || "C:/Users/user1/Downloads/Mario Kart 64 (E) (V1.1) [!].z64";
 const BASE = "http://localhost:5173/";
 const SHOT = os.tmpdir();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
