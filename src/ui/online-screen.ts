@@ -130,7 +130,9 @@ function launchHost(body: HTMLElement, rom: File): void {
       pill.set(s.phase, s.connection + extra, s.rttMs);
     },
   });
-  pending.then((h) => { handle = h; }).catch((e: Error) => { ov.setText("Error: " + e.message); pill.set("error", e.message); });
+  pending
+    .then((h) => { handle = h; h.setFair(fairOn); }) // sincronizar el toggle si lo tocaron durante el boot
+    .catch((e: Error) => { ov.setText("Error: " + e.message); pill.set("error", e.message); });
 
   onScreenLeave(() => {
     window.clearInterval(waitRender);

@@ -26,7 +26,13 @@ export interface Signaling {
 /** URL del servicio de señalización. Vacío = usar same-origin /signal (dev). */
 export function signalingUrl(room: string): string {
   const configured = import.meta.env.VITE_SIGNALING_URL as string | undefined;
-  const override = new URLSearchParams(location.search).get("signal") || undefined;
+  // El override ?signal= SOLO en dev (debug local). En prod se ignora: un link
+  // armado (?signal=wss://evil) no debe poder redirigir la señalización de la
+  // víctima a un servidor del atacante. import.meta.env.DEV es build-time, no
+  // manipulable desde la URL.
+  const override = import.meta.env.DEV
+    ? new URLSearchParams(location.search).get("signal") || undefined
+    : undefined;
   const base = override || configured;
   if (base) {
     try {

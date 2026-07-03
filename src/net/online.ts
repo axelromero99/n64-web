@@ -210,6 +210,10 @@ export async function startHost(opts: {
   mirror.width = canvas.width;
   mirror.height = canvas.height;
   const mctx = mirror.getContext("2d")!;
+  // Un solo stream para toda la vida del host, reutilizado en cada (re)conexión
+  // de guest. Antes se creaba uno por sesión y teardownPeer no lo paraba → cada
+  // re-join dejaba un MediaStreamTrack capturando a 30 fps (leak de CPU/memoria).
+  const stream = mirror.captureStream(30);
 
   let lastInput: N64Input = { buttons: 0, stickX: 0, stickY: 0 };
 
@@ -295,7 +299,6 @@ export async function startHost(opts: {
     if (pc || stopped) { creatingPeer = false; return; }
     creatingPeer = false;
 
-    const stream = mirror.captureStream(30);
     pc = new RTCPeerConnection(rtcConfig);
     const thisPc = pc;
     candidates = new RemoteCandidates(pc);
@@ -396,6 +399,7 @@ export async function startHost(opts: {
       stopped = true;
       window.clearInterval(loopTimer);
       teardownPeer();
+      for (const t of stream.getTracks()) t.stop(); // recién acá: fin de la sesión del host
       sig.close();
     },
   };
