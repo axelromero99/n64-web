@@ -316,10 +316,21 @@ export async function startHost(opts: {
 
     const dc = pc.createDataChannel("input", { ordered: false, maxRetransmits: 0 });
     dc.binaryType = "arraybuffer";
+    // Estado por sesión para descartar paquetes viejos/reordenados del canal
+    // no-confiable y evitar re-emitir en los keepalives que no cambian nada.
+    let lastSeq = 0;
+    let lastPacked = packInput(EMPTY_INPUT);
     dc.onmessage = (e) => {
       const data = e.data as ArrayBuffer;
-      if (!(data instanceof ArrayBuffer) || data.byteLength !== 4) return; // solo nuestro formato
-      lastInput = unpackInput(new Int32Array(data)[0]);
+      if (!(data instanceof ArrayBuffer) || data.byteLength !== 8) return; // [inputPack, seq]
+      const arr = new Int32Array(data);
+      const s = arr[1];
+      if (s === lastSeq || (s - lastSeq) < 0) return; // viejo/reordenado (delta con signo por si wrappea)
+      lastSeq = s;
+      const packed = arr[0];
+      if (packed === lastPacked) return; // keepalive sin cambios: no tocar la UI
+      lastPacked = packed;
+      lastInput = unpackInput(packed);
       status.inputMsgs++;
       emit();
     };
@@ -419,17 +430,30 @@ export async function startGuest(opts: {
   let answered = false;
   let stopped = false;
 
-  const sendInput = (input: N64Input) => {
-    dbg.keydown = (dbg.keydown as number) + 1;
-    status.inputMsgs++;
-    emit();
+  // El canal de input es no-confiable/sin-orden (baja latencia). Para que un
+  // paquete perdido o reordenado no deje un input "pegado" en el host:
+  //   - cada mensaje lleva un nº de secuencia (8 bytes: [inputPack, seq]);
+  //     el host descarta los que llegan viejos.
+  //   - un keepalive reenvía el estado ACTUAL cada 100 ms aunque no cambie, así
+  //     un keyup perdido se corrige en ≤100 ms en vez de quedar pegado.
+  let seq = 0;
+  let lastSent: N64Input = EMPTY_INPUT;
+  const rawSendInput = (input: N64Input) => {
     if (dc && dc.readyState === "open") {
       try {
-        dc.send(new Int32Array([packInput(input)]).buffer);
+        dc.send(new Int32Array([packInput(input), (seq = (seq + 1) | 0)]).buffer);
         dbg.sent = (dbg.sent as number) + 1;
       } catch { /* el canal se cerró entre el check y el send */ }
     }
   };
+  const sendInput = (input: N64Input) => {
+    lastSent = input;
+    dbg.keydown = (dbg.keydown as number) + 1;
+    status.inputMsgs++;
+    emit();
+    rawSendInput(input);
+  };
+  const keepAlive = window.setInterval(() => rawSendInput(lastSent), 100);
   const reattach = (map: KeyboardMap) => {
     currentMap = map;
     detach();
@@ -576,6 +600,7 @@ export async function startGuest(opts: {
       stopped = true;
       window.removeEventListener("beforeunload", warnUnload);
       window.clearInterval(joinTimer);
+      window.clearInterval(keepAlive);
       stopRtt?.();
       detach();
       try { pc?.close(); } catch { /* ya cerrado */ }

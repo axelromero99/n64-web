@@ -16,8 +16,9 @@
     "verify:controls": "node scripts/verify-controls.mjs",
     "verify:fair": "node scripts/verify-fair.mjs",
     "verify:disconnect": "node scripts/verify-disconnect.mjs",
+    "verify:packetloss": "node scripts/verify-packetloss.mjs",
     "verify:quick": "npm run verify:ui && npm run verify:badcode",
-    "verify:all": "npm run verify:quick && npm run verify:online && npm run verify:controls && npm run verify:fair && npm run verify:disconnect",
+    "verify:all": "npm run verify:quick && npm run verify:online && npm run verify:controls && npm run verify:fair && npm run verify:disconnect && npm run verify:packetloss",
     "verify:prod": "node scripts/prod-verify.mjs",
     "verify:worker": "node scripts/worker-limits-test.mjs",
     "verify:devlimits": "node scripts/dev-limits-test.mjs"
