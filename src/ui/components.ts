@@ -110,6 +110,26 @@ export function romDropzone(onFile: (f: File) => void, hint = "Arrastrá tu ROM 
   return zone;
 }
 
+/**
+ * Nota bajo el dropzone con fuentes LEGALES de ROMs (homebrew de la comunidad).
+ * A propósito NO linkeamos sitios de ROMs comerciales: distribuyen material
+ * con copyright y linkearlos es facilitar esa distribución.
+ * Va FUERA del <label> del dropzone: un link adentro dispararía el file picker.
+ */
+export function romHelp(): HTMLElement {
+  const link = (href: string, text: string) =>
+    el("a", { href, textContent: text, target: "_blank", rel: "noopener noreferrer" });
+  return el("p", { class: "rom-help muted small" },
+    "¿No tenés una ROM? Hay juegos homebrew gratuitos y legales hechos por la comunidad: ",
+    link("https://itch.io/games/tag-n64", "itch.io"),
+    " · ",
+    link("https://n64brew.dev", "N64brew"),
+    " · ",
+    link("https://pdroms.de", "PDRoms"),
+    ". Para juegos comerciales, la vía legítima es dumpear tu propio cartucho.",
+  );
+}
+
 /** Copia texto al portapapeles con fallback. */
 export async function copyText(text: string): Promise<boolean> {
   try {
