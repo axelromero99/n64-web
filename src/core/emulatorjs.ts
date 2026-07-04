@@ -1,6 +1,6 @@
 // Core del M1: EmulatorJS (modo LOCAL + jugador 1 del online).
 //
-// EmulatorJS envuelve el core mupen64plus_next (N64) compilado a WASM y ya trae
+// EmulatorJS envuelve un core de N64 compilado a WASM y ya trae
 // GRATIS lo que necesitamos para el modo local:
 //   - hasta 4 jugadores locales (varios mandos en el mismo PC)
 //   - guardado rapido, fullscreen, menu de reasignacion, etc.
@@ -96,7 +96,14 @@ export function launchLocal({ container, rom }: LaunchOptions): void {
   const romUrl = URL.createObjectURL(rom);
 
   window.EJS_player = container;
-  window.EJS_core = "n64";
+  // parallel_n64 y NO "n64" (mupen64plus_next): el GLideN64 de mupen64plus_next
+  // tiene un bug de microcódigo HLE en SPLITSCREEN (gonetz/GLideN64#2894) que
+  // deja invisibles el minimapa, la ruleta de ítems y el contador de vueltas en
+  // partidas 2P+ (cajas negras) — justo el modo estrella de este producto.
+  // Verificado acá con MK64: 4.2.3 y 4.3.0-pre lo sufren; parallel_n64 dibuja
+  // todo el HUD bien en 1P y 2P. Si se vuelve a mupen64plus_next, re-testear
+  // el HUD en una carrera 2P VS antes de deployar.
+  window.EJS_core = "parallel_n64";
   window.EJS_pathtodata = EJS_CDN;
   window.EJS_gameUrl = romUrl;
   window.EJS_gameName = rom.name.replace(/\.[^.]+$/, "");
