@@ -139,6 +139,8 @@ infinitos.
 
 ### Multijugador local hasta 4: presets elegibles y controles probados sin hardware
 
+![Selector de controles por jugador con detección de mando](docs/img/multiplayer.png)
+
 El core (EmulatorJS) soporta 4 jugadores, pero por defecto solo el Jugador 1
 tenía controles: enchufar un 2º mando no hacía nada. En vez de inventar un mapeo,
 **estudié el `defaultControllers` oficial de EmulatorJS** y confirmé que el mapa
