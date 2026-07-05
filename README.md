@@ -1,5 +1,6 @@
 # N64 Web
 
+[![CI](https://github.com/axelromero99/n64-web/actions/workflows/ci.yml/badge.svg)](https://github.com/axelromero99/n64-web/actions/workflows/ci.yml)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
 ![WebRTC](https://img.shields.io/badge/WebRTC-P2P-333333?logo=webrtc)
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20Durable%20Objects-f38020?logo=cloudflare&logoColor=white)

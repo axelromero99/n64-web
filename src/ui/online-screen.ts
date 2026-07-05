@@ -1,6 +1,6 @@
 import { startHost, startGuest, type NetStatus, type GuestHandle, type HostHandle } from "../net/online";
 import { KEYBOARD_PRESETS } from "../input/n64";
-import { el, button, clickable, statusPill, romDropzone, romHelp, overlay, toast, copyText, makeRoomCode, roomFromUrl, inviteLink, touchWarning } from "./components";
+import { el, button, clickable, statusPill, romDropzone, overlay, toast, copyText, makeRoomCode, roomFromUrl, inviteLink, touchWarning } from "./components";
 import { controlsHelp } from "./controls-help";
 import { onScreenLeave } from "./screens";
 
@@ -60,7 +60,7 @@ function renderHost(body: HTMLElement): void {
 
   const intro = el("p", { class: "sub", textContent: "Cargá tu ROM para abrir la sala. Cuando esté lista, compartí el código o el link." });
   const dz = romDropzone((file) => launchHost(body, file));
-  body.append(intro, dz, romHelp(), back);
+  body.append(intro, dz, back);
 }
 
 function launchHost(body: HTMLElement, rom: File): void {

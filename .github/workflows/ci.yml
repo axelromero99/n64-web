@@ -1,0 +1,31 @@
+name: CI
+
+# Corre en cada push a main y en cada PR: typecheck estricto, build de producción
+# y el smoke e2e sin ROM (Playwright headless). Los tests que necesitan una ROM
+# real (verify:all, verify:controls, etc.) quedan para correr en local.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck estricto
+        run: npm run typecheck
+      - name: Build de producción
+        run: npm run build
+      - name: Instalar Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+      - name: Smoke e2e sin ROM (UI + casos de fallo)
+        run: |
+          npm run dev &
+          for i in $(seq 1 60); do curl -sf http://localhost:5173 >/dev/null && break; sleep 1; done
+          npm run verify:quick

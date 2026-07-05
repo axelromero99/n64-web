@@ -1,7 +1,7 @@
 import { launchLocal, CONTROL_PRESETS, DEFAULT_PRESET_BY_PLAYER, applyPlayerPreset } from "../core/emulatorjs";
 import { renderOnline } from "./online-screen";
 import { controlsHelp } from "./controls-help";
-import { el, button, clickable, romDropzone, romHelp, overlay, toast, touchWarning } from "./components";
+import { el, button, clickable, romDropzone, overlay, toast, touchWarning } from "./components";
 
 export type Screen = "landing" | "local" | "online";
 
@@ -202,7 +202,7 @@ function local(go: (s: Screen) => void): HTMLElement {
       if (window.EJS_emulator) location.reload();
     });
   });
-  holder.append(dz, romHelp());
+  holder.append(dz);
 
   return panel;
 }
