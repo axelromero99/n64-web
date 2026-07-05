@@ -220,3 +220,7 @@ Emular no es ilegal; distribuir ROMs sí. Este proyecto no incluye ni distribuye
 ROMs: cada usuario carga la suya y nunca sale de su navegador.
 
 Código bajo licencia MIT — ver [`LICENSE`](./LICENSE).
+
+---
+
+<p align="right"><sub><em><a href="https://arrecode.vercel.app/#/">you want to see my old portfolio?</a></em></sub></p>
