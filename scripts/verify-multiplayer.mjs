@@ -163,9 +163,26 @@ try {
   const badge2 = await local.evaluate(() => document.querySelector('.gp-badge[data-player="1"]')?.classList.contains("on"));
   check(!!badge2, "badge del Jugador 2 se enciende al enchufar el 2º mando");
   check(hit(await padBtn(1, 1), 1, 0), "mando 2: botón A → A del Jugador 2");
+
+  // 3º y 4º mando → hasta 4; y los CUATRO reciben input AL MISMO TIEMPO.
+  await local.evaluate(() => {
+    for (const idx of [2, 3]) window.__pads.push({ index: idx, id: `Virtual ${idx} (STANDARD GAMEPAD)`, connected: true, mapping: "standard",
+      timestamp: performance.now(), axes: [0, 0, 0, 0], buttons: Array.from({ length: 16 }, () => ({ pressed: false, value: 0, touched: false })) });
+  });
+  await sleep(600);
+  const assigned4 = await local.evaluate(() => (window.EJS_emulator?.gamepadSelection || []).filter(Boolean).length);
+  check(assigned4 === 4, `los 4 mandos asignados a P1-P4 (${assigned4}/4)`);
+  // Apretar A (botón 1) en los 4 mandos en el MISMO tick.
+  await hookInput(local);
+  await local.evaluate(() => { window.__calls = []; const t = performance.now(); for (const pad of window.__pads) { pad.buttons[1].pressed = true; pad.buttons[1].value = 1; pad.timestamp = t; } });
+  await sleep(180);
+  await local.evaluate(() => { const t = performance.now(); for (const pad of window.__pads) { pad.buttons[1].pressed = false; pad.buttons[1].value = 0; pad.timestamp = t; } });
+  await sleep(120);
+  const slots = await local.evaluate(() => [...new Set((window.__calls || []).filter((c) => c.i === 0 && c.v > 0).map((c) => c.pl))].sort());
+  check(slots.length === 4 && slots[0] === 0 && slots[3] === 3, `los 4 jugadores reciben A al MISMO tiempo (slots ${JSON.stringify(slots)})`);
   await ctxL.close();
 
-  // ---- (D) ONLINE (host): P2-P4 sin control local ----
+  // ---- (E) ONLINE (host): P2-P4 sin control local ----
   const ctxO = await browser.newContext({ viewport: { width: 820, height: 720 } });
   const host = await ctxO.newPage();
   host.on("pageerror", (e) => console.log("  [host err]", e.message));
