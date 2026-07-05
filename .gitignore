@@ -6,6 +6,9 @@ dist/
 .wrangler/
 .dev.vars
 
+# Tooling local (agentes / worktrees), no es parte del proyecto
+.claude/
+
 # ROMs: nunca versionar (legal). El usuario las carga desde su disco.
 public/roms/*
 !public/roms/PONER-ROMS-AQUI.txt

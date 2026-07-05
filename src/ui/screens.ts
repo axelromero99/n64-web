@@ -1,4 +1,4 @@
-import { launchLocal } from "../core/emulatorjs";
+import { launchLocal, CONTROL_PRESETS, DEFAULT_PRESET_BY_PLAYER, applyPlayerPreset } from "../core/emulatorjs";
 import { renderOnline } from "./online-screen";
 import { controlsHelp } from "./controls-help";
 import { el, button, clickable, romDropzone, romHelp, overlay, toast, touchWarning } from "./components";
@@ -46,7 +46,7 @@ function landing(go: (s: Screen) => void): HTMLElement {
     el("div", { class: "arrow", textContent: "→" }),
     el("div", { class: "card-icon", textContent: "🛋️" }),
     el("h2", { textContent: "Jugar Local" }),
-    el("p", { textContent: "2 a 4 jugadores en esta misma compu, con varios mandos. Sin internet, sin vueltas." }),
+    el("p", { textContent: "Hasta 4 jugadores en esta misma compu, con varios mandos. Mario Party, Smash, Mario Kart. Sin internet, sin vueltas." }),
   ), () => go("local"));
 
   const online = clickable(el("div", { class: "card" },
@@ -63,13 +63,102 @@ function landing(go: (s: Screen) => void): HTMLElement {
 
 // ---------- Local ----------
 
+// Aviso EN VIVO de Bloq Num: el preset Numpad depende de que NumLock esté
+// activado. Con NumLock OFF, el navegador reporta las teclas del numpad como
+// flechas/Insert (keyCode 38/45…), que además pisan al Jugador 1. Cuando algún
+// jugador usa Numpad, vigilamos la primera tecla del numpad y avisamos si está
+// apagado. `code` sigue siendo "Numpad8" aunque NumLock esté OFF, así lo
+// detectamos sin ambigüedad.
+let numpadUsers = 0;
+let numlockListener: ((e: KeyboardEvent) => void) | null = null;
+let numlockWarned = false;
+function watchNumlock(active: boolean): void {
+  if (active && !numlockListener) {
+    numlockWarned = false;
+    numlockListener = (e) => {
+      if (numlockWarned || !e.code.startsWith("Numpad")) return;
+      if (e.getModifierState && !e.getModifierState("NumLock")) {
+        numlockWarned = true;
+        toast("⚠ Activá Bloq Num: sin él, el numpad no controla al Jugador 2 (y pisa al Jugador 1)");
+      }
+    };
+    document.addEventListener("keydown", numlockListener, true);
+  } else if (!active && numlockListener) {
+    document.removeEventListener("keydown", numlockListener, true);
+    numlockListener = null;
+  }
+}
+
+// Sondeo del estado de mandos: refleja la asignación REAL de EmulatorJS
+// (gamepadSelection: un slot por jugador con "id_index" si tiene mando). Enciende
+// un badge "🎮 detectado" en el jugador correspondiente al enchufar un control.
+let gamepadPoll = 0;
+function watchGamepads(badges: HTMLElement[]): void {
+  window.clearInterval(gamepadPoll);
+  gamepadPoll = window.setInterval(() => {
+    const sel = window.EJS_emulator?.gamepadSelection;
+    badges.forEach((b, p) => b.classList.toggle("on", !!(sel && sel[p])));
+  }, 500);
+}
+
+// Selector de preset por jugador (P1-P4). El default es simple: P1 al teclado
+// (Flechas) y el resto por mando; cada uno cambia su layout acá para, p. ej.,
+// jugar de a dos en el mismo teclado (P1 Flechas + P2 Numpad).
+function presetPicker(): HTMLElement {
+  const hintFor = (id: string) => CONTROL_PRESETS.find((p) => p.id === id)?.hint ?? "";
+
+  numpadUsers = 0;
+  watchNumlock(false);
+  const chosen: string[] = [...DEFAULT_PRESET_BY_PLAYER];
+  const badges: HTMLElement[] = [];
+
+  const rows = el("div", { class: "presets-rows" });
+  for (let p = 0; p < 4; p++) {
+    const sel = el("select", { class: "preset-select" });
+    sel.setAttribute("aria-label", `Controles del jugador ${p + 1}`);
+    sel.dataset.player = String(p);
+    for (const preset of CONTROL_PRESETS) sel.append(el("option", { value: preset.id, textContent: preset.name }));
+    sel.value = DEFAULT_PRESET_BY_PLAYER[p];
+
+    const hint = el("span", { class: "muted small preset-hint", textContent: hintFor(sel.value) });
+    sel.onchange = () => {
+      hint.textContent = hintFor(sel.value);
+      if (!applyPlayerPreset(p, sel.value)) { toast("Esperá a que arranque el juego para cambiar controles"); return; }
+      if (chosen[p] === "numpad") numpadUsers--;
+      if (sel.value === "numpad") { numpadUsers++; toast("Numpad: acordate de activar Bloq Num"); }
+      chosen[p] = sel.value;
+      watchNumlock(numpadUsers > 0);
+    };
+
+    const badge = el("span", { class: "gp-badge", title: "Mando detectado", textContent: "🎮 mando" });
+    badge.dataset.player = String(p);
+    badges.push(badge);
+
+    rows.append(el("div", { class: "preset-row" },
+      el("span", { class: "preset-label", textContent: `Jugador ${p + 1}` }),
+      sel, badge, hint,
+    ));
+  }
+
+  watchGamepads(badges);
+
+  return el("details", { class: "presets", open: true },
+    el("summary", {},
+      el("span", { textContent: "🎮 Controles por jugador" }),
+      el("span", { class: "muted small", textContent: "Dos en un teclado: P1 Flechas + P2 Numpad (con Bloq Num)" }),
+    ),
+    rows,
+    el("p", { class: "muted small preset-foot", textContent: "Enchufá mandos y se asignan en orden (1º = P1…). Reasigná cada botón desde el menú ⚙ del emulador." }),
+  );
+}
+
 function local(go: (s: Screen) => void): HTMLElement {
   const panel = el("div", { class: "panel" });
   panel.append(el("div", { class: "section-head" },
     el("h2", { textContent: "🛋️ Jugar Local" }),
     button("← Volver", "ghost", () => go("landing")),
   ));
-  panel.append(el("p", { class: "sub", textContent: "Cargá tu ROM y jugá. Enchufá hasta 4 mandos para 2-4 jugadores en esta compu." }));
+  panel.append(el("p", { class: "sub", textContent: "Cargá tu ROM y jugá. Hasta 4 jugadores en esta compu — ideal para Mario Party, Smash o Mario Kart a pantalla dividida." }));
   const warn = touchWarning();
   if (warn) panel.append(warn);
 
@@ -84,7 +173,7 @@ function local(go: (s: Screen) => void): HTMLElement {
     const ov = overlay("Descargando el core de N64 y arrancando el juego…");
     stage.append(ov.root);
     const toolbar = el("div", { class: "toolbar" },
-      el("span", { class: "muted small", textContent: "Configurá los controles desde el menú ⚙ del emulador, abajo." }),
+      el("span", { class: "muted small", textContent: "Hasta 4 jugadores. Elegí el control de cada uno abajo 👇" }),
       el("div", { class: "spacer" }),
       button("🎮 Controles", "ghost", controlsHelp),
       button("⛶ Pantalla completa", "ghost", () => {
@@ -92,8 +181,8 @@ function local(go: (s: Screen) => void): HTMLElement {
         else void stage.requestFullscreen().catch(() => toast("No disponible"));
       }),
     );
-    holder.append(stage, toolbar);
-    launchLocal({ container: "#game", rom });
+    holder.append(stage, toolbar, presetPicker());
+    launchLocal({ container: "#game", rom, multiplayer: true });
     // Quitar overlay cuando aparezca el canvas del juego; si en 30 s no
     // apareció, algo falló (CDN caído, ROM inválida): avisar en vez de girar.
     const t0 = performance.now();
@@ -106,6 +195,8 @@ function local(go: (s: Screen) => void): HTMLElement {
     }, 500);
     onScreenLeave(() => {
       window.clearInterval(t);
+      window.clearInterval(gamepadPoll);
+      watchNumlock(false);
       // El emulador no tiene teardown sin recargar: si quedó corriendo (audio
       // incluido), recargar deja la app limpia en la pantalla nueva.
       if (window.EJS_emulator) location.reload();

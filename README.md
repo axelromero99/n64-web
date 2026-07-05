@@ -22,7 +22,7 @@ mundo vía WebRTC peer-to-peer.
 
 | Modo | Qué es |
 |------|--------|
-| 🛋️ **Local (2-4 jugadores)** | Emulación N64 completa en tu PC (WASM), hasta 4 mandos USB. Sin latencia. |
+| 🛋️ **Local (hasta 4 jugadores)** | Emulación N64 completa en tu PC (WASM). Enchufá hasta 4 mandos y andan de una (Mario Party, Smash, Bomberman…). Cada jugador elige su preset abajo del juego (Flechas / Numpad / WASD / mando); dos en un teclado = P1 Flechas + P2 Numpad. Sin latencia. |
 | 🌐 **Online (2 jugadores)** | El host emula y transmite el video por WebRTC; el invitado manda su input. Con **modo justo** para eliminar la ventaja del host. |
 
 Probar el online lleva un minuto: *Jugar Online → Crear una sala → cargar ROM →
@@ -137,6 +137,30 @@ por teclado, con estados de carga/error en cada pantalla y mensajes concretos
 ("sala llena", "no encuentro esa sala", "reintentando…") en vez de spinners
 infinitos.
 
+### Multijugador local hasta 4: presets elegibles y controles probados sin hardware
+
+El core (EmulatorJS) soporta 4 jugadores, pero por defecto solo el Jugador 1
+tenía controles: enchufar un 2º mando no hacía nada. En vez de inventar un mapeo,
+**estudié el `defaultControllers` oficial de EmulatorJS** y confirmé que el mapa
+de gamepad que cargamos es idéntico al suyo (el 4.2.3 fijado no trae defaults
+propios, por eso los inyectamos). Sobre eso: un **selector de preset por jugador**
+(Flechas / Numpad / WASD / Solo mando) para armar desde "cuatro con mando" hasta
+"dos en un mismo teclado", y un badge que enciende cuando se detecta cada mando.
+
+Lo interesante es **cómo se verifica sin cuatro joysticks físicos**: el test
+maneja el emulador de verdad y confirma, vía hook de `simulateInput`, que el input
+llega al jugador correcto —
+
+- **Teclado**: se presionan teclas reales (Flechas→P1, WASD→P2); el numpad se
+  ejercita inyectando el `keyCode` exacto que produce con Bloq Num (104), porque
+  el navegador headless fuerza NumLock OFF. Ese mismo detalle es un *footgun*
+  real (sin Bloq Num el numpad manda flechas y pisa al P1), así que la UI **avisa
+  en vivo** si está apagado.
+- **Mando**: se inyecta un **gamepad virtual por la Gamepad API**
+  (`navigator.getGamepads`) y se comprueba que EmulatorJS lo auto-asigna (1er
+  mando → P1, 2º → P2) y que sus botones/stick mueven al core. Sin hardware, mismo
+  camino que un control físico.
+
 ## Testing: e2e contra la ROM real, casos de fallo incluidos
 
 Nada se marca como funcionando sin un script que lo pruebe de punta a punta
@@ -155,6 +179,7 @@ npm run verify:all     # suite completa con ROM real (~10 min)
 | `verify:badcode` | código de sala inexistente → aviso claro, sin spinner infinito |
 | `verify:online` | e2e completo: invite link, conexión, video no-negro, input, modo justo, sala llena |
 | `verify:controls` | esquema de controles unificado host + guest (polaridad y deflexión del stick) |
+| `verify:multiplayer` | 4 jugadores locales: presets con teclas reales, aviso de NumLock y **mando virtual** (Gamepad API) manejando el core |
 | `verify:fair` | el input del host pasa por la ruta con delay cuando hay guest |
 | `verify:disconnect` | caída abrupta del guest → input de P2 reseteado → re-join OK |
 | `verify:worker` | límites del Durable Object contra `wrangler dev` (workerd real) |
