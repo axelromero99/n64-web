@@ -125,7 +125,9 @@ Detalle: [`docs/signaling-cloudflare.md`](./docs/signaling-cloudflare.md).
 
 ### Controles de 4 jugadores, verificados sin hardware
 
-![Selector de controles por jugador](docs/img/multiplayer.png)
+![Cuatro jugadores en una partida de Mario Kart 64, quad-split](docs/img/mk64-4-jugadores.png)
+
+<sub><em>Partida de 4 jugadores (quad-split) navegada y manejada por Playwright — la prueba visual del feature. Mario Kart™ 64 es marca de Nintendo; la captura se muestra solo para demostrar el emulador (ver <a href="#legalidad-y-licencia">Legalidad y marcas</a>).</em></sub>
 
 El core soporta 4 jugadores pero por defecto solo mapea al Jugador 1: enchufar un
 segundo mando no hacía nada. En vez de inventar un mapeo, saqué el de gamepad del
@@ -133,6 +135,8 @@ segundo mando no hacía nada. En vez de inventar un mapeo, saqué el de gamepad 
 defaults propios, por eso hay que inyectarlos). Encima va un selector de preset
 por jugador (flechas / numpad / WASD / mando) y un indicador que se enciende
 cuando se detecta cada control.
+
+![Selector de controles por jugador](docs/img/multiplayer.png)
 
 Lo que hace distinta esta parte es que el test **maneja el emulador de verdad** y,
 vía hook de `simulateInput`, confirma que cada tecla o botón llega al jugador
@@ -218,6 +222,12 @@ Workers y Durable Objects (SQLite-backed, free tier) · Playwright para los e2e.
 
 Emular no es ilegal; distribuir ROMs sí. Este proyecto no incluye ni distribuye
 ROMs: cada usuario carga la suya y nunca sale de su navegador.
+
+**Marcas.** Nintendo 64, Nintendo y los nombres de los juegos (Mario Kart 64,
+etc.) son marcas de sus respectivos dueños. Este proyecto **no está afiliado,
+patrocinado ni respaldado por Nintendo**. Las capturas de juegos comerciales se
+muestran únicamente para **demostrar la compatibilidad del emulador**; no se
+incluyen ni distribuyen ROMs.
 
 Código bajo licencia MIT — ver [`LICENSE`](./LICENSE).
 
