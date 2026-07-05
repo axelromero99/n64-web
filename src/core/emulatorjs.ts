@@ -105,6 +105,18 @@ function gamepadMap(): Record<number, EJSControl> {
   return out;
 }
 
+/**
+ * Copia con objetos internos NUEVOS. Necesaria porque EmulatorJS muta
+ * `controls[p][i].value` in-place en setupKeys(): sin copia profunda, eso
+ * mutaría N64_CONTROLS_P0 o haría que dos jugadores con el mismo preset
+ * compartan el mismo objeto de botón.
+ */
+function cloneControls(map: Record<number, EJSControl>): Record<number, EJSControl> {
+  const out: Record<number, EJSControl> = {};
+  for (const [i, c] of Object.entries(map)) out[Number(i)] = { ...c };
+  return out;
+}
+
 // Teclado de cada preset: índice de botón N64 -> nombre de tecla de EmulatorJS.
 type KbCluster = Array<[number, string]>;
 
@@ -126,7 +138,7 @@ const KB_WASD: KbCluster = [
 
 /** Mapa completo de un preset: gamepad SIEMPRE + el teclado del cluster (o none). */
 function presetMap(cluster: KbCluster | "flechas" | null): Record<number, EJSControl> {
-  if (cluster === "flechas") return { ...N64_CONTROLS_P0 }; // ya trae value + value2
+  if (cluster === "flechas") return cloneControls(N64_CONTROLS_P0); // ya trae value + value2
   const out = gamepadMap();
   if (cluster) for (const [i, key] of cluster) out[i] = { ...out[i], value: key };
   return out;
@@ -214,7 +226,7 @@ export function launchLocal({ container, rom, multiplayer = false }: LaunchOptio
         2: presetById(DEFAULT_PRESET_BY_PLAYER[2]),
         3: presetById(DEFAULT_PRESET_BY_PLAYER[3]),
       }
-    : { 0: { ...N64_CONTROLS_P0 }, 1: {}, 2: {}, 3: {} };
+    : { 0: cloneControls(N64_CONTROLS_P0), 1: {}, 2: {}, 3: {} };
   window.EJS_defaultControllers = defaults;
 
   const script = document.createElement("script");
@@ -240,8 +252,10 @@ function applyCleanControls(defaults: EJSControllers, multiplayer: boolean): voi
     const emu = window.EJS_emulator;
     if (emu?.controls && typeof emu.setupKeys === "function") {
       if (!upToDate) {
-        // Reset único al esquema nuevo (los 4 jugadores).
-        for (const p of [0, 1, 2, 3]) emu.controls[p] = { ...defaults[p] };
+        // Reset único al esquema nuevo (los 4 jugadores). Copia profunda: no
+        // queremos que setupKeys mute window.EJS_defaultControllers (lo usa el
+        // botón "Reset" del menú de EmulatorJS).
+        for (const p of [0, 1, 2, 3]) emu.controls[p] = cloneControls(defaults[p]);
       } else {
         // Online ya migrado: solo garantizar que el host no tenga P2-P4 locales.
         emu.controls[1] = {}; emu.controls[2] = {}; emu.controls[3] = {};

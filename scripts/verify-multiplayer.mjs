@@ -22,13 +22,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await chromium.launch({ headless: false, args: ["--autoplay-policy=no-user-gesture-required", "--ignore-gpu-blocklist"] });
 let ok = true;
 const check = (cond, label) => { console.log(`   ${cond ? "✓" : "✗"} ${label}`); if (!cond) ok = false; };
-const note = (label) => console.log(`   • ${label}`);
 const waitStarted = async (p) => { for (let i = 0; i < 40; i++) { await sleep(1000); if (await p.evaluate(() => !!window.EJS_emulator?.started)) return true; } return false; };
 
-// Instala un hook que registra las llamadas a simulateInput con valor != 0.
+// Registra las llamadas a simulateInput con valor != 0. Idempotente: envuelve
+// gm.simulateInput UNA sola vez (si no, las llamadas repetidas apilan wrappers y
+// duplican los registros); cada invocación solo limpia el buffer.
 const hookInput = (p) => p.evaluate(() => {
   const gm = window.EJS_emulator.gameManager;
   window.__calls = [];
+  if (gm.__hooked) return;
+  gm.__hooked = true;
   const orig = gm.simulateInput.bind(gm);
   gm.simulateInput = (pl, i, v) => { if (v) window.__calls.push({ pl, i, v }); return orig(pl, i, v); };
 });
